@@ -1,0 +1,176 @@
+services:
+  php80:
+    container_name: PHP_8.0
+    build:
+      context: docker/conf/docker-files
+      dockerfile: fpm.Dockerfile
+      args:
+        PHP_VERSION: 8.0
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXTENSIONS: ${PHP_EXTENSIONS:-}
+        LINUX_PACKAGES: ${LINUX_PACKAGES:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        PHP_EXTENSIONS_VERSIONED: ${PHP_EXTENSIONS_80:-}
+        LINUX_PACKAGES_VERSIONED: ${LINUX_PACKAGES_80:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_80:-}
+        WORKING_DIR: ${WORKING_DIR}
+    profiles:
+      - php
+      - php80
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    env_file:
+      - "./.env"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+      - ./configuration/ssh:/home/devuser/.ssh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend
+  php81:
+    container_name: PHP_8.1
+    build:
+      context: docker/conf/docker-files
+      dockerfile: fpm.Dockerfile
+      args:
+        PHP_VERSION: 8.1
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXTENSIONS: ${PHP_EXTENSIONS:-}
+        LINUX_PACKAGES: ${LINUX_PACKAGES:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        PHP_EXTENSIONS_VERSIONED: ${PHP_EXTENSIONS_81:-}
+        LINUX_PACKAGES_VERSIONED: ${LINUX_PACKAGES_81:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_81:-}
+        WORKING_DIR: ${WORKING_DIR}
+    profiles:
+      - php
+      - php81
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    env_file:
+      - "./.env"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+      - ./configuration/ssh:/home/devuser/.ssh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend
+  php82:
+    container_name: PHP_8.2
+    build:
+      context: docker/conf/docker-files
+      dockerfile: fpm.Dockerfile
+      args:
+        PHP_VERSION: 8.2
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXTENSIONS: ${PHP_EXTENSIONS:-}
+        LINUX_PACKAGES: ${LINUX_PACKAGES:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        PHP_EXTENSIONS_VERSIONED: ${PHP_EXTENSIONS_82:-}
+        LINUX_PACKAGES_VERSIONED: ${LINUX_PACKAGES_82:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_82:-}
+        WORKING_DIR: ${WORKING_DIR}
+    profiles:
+      - php
+      - php82
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    env_file:
+      - "./.env"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+      - ./configuration/ssh:/home/devuser/.ssh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend
+  php83:
+    container_name: PHP_8.3
+    build:
+      context: docker/conf/docker-files
+      dockerfile: fpm.Dockerfile
+      args:
+        PHP_VERSION: 8.3
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXTENSIONS: ${PHP_EXTENSIONS:-}
+        LINUX_PACKAGES: ${LINUX_PACKAGES:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        PHP_EXTENSIONS_VERSIONED: ${PHP_EXTENSIONS_83:-}
+        LINUX_PACKAGES_VERSIONED: ${LINUX_PACKAGES_83:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_83:-}
+        WORKING_DIR: ${WORKING_DIR}
+    profiles:
+      - php
+      - php83
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    env_file:
+      - "./.env"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+      - ./configuration/ssh:/home/devuser/.ssh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend
+  php84:
+    container_name: PHP_8.4
+    build:
+      context: docker/conf/docker-files
+      dockerfile: fpm.Dockerfile
+      args:
+        PHP_VERSION: 8.4
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXTENSIONS: ${PHP_EXTENSIONS:-}
+        LINUX_PACKAGES: ${LINUX_PACKAGES:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        PHP_EXTENSIONS_VERSIONED: ${PHP_EXTENSIONS_84:-}
+        LINUX_PACKAGES_VERSIONED: ${LINUX_PACKAGES_84:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_84:-}
+        WORKING_DIR: ${WORKING_DIR}
+    profiles:
+      - php
+      - php84
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    env_file:
+      - "./.env"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+      - ./configuration/ssh:/home/devuser/.ssh
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend

@@ -1,8 +1,8 @@
 ARG PHP_VERSION
-FROM php:${PHP_VERSION:-8.3}-fpm
+FROM php:${PHP_VERSION:-8.3}-cli
 
 LABEL org.opencontainers.image.source=https://github.com/infocyph/Devtainer
-LABEL org.opencontainers.image.description="PHP FPM"
+LABEL org.opencontainers.image.description="PHP CLI with Cron and Supervisor"
 LABEL org.opencontainers.image.licenses=MIT
 LABEL org.opencontainers.image.authors=infocyph,abmmhasan
 
@@ -10,45 +10,25 @@ LABEL org.opencontainers.image.authors=infocyph,abmmhasan
 SHELL ["/bin/bash", "-c"]
 
 # System packages (without sudo)
-ARG LINUX_PACKAGES
-ARG LINUX_PACKAGES_VERSIONED
+ARG LINUX_PKG
+ARG LINUX_PKG_VERSIONED
 RUN apt update && apt upgrade -y && \
-    if [[ -n "$LINUX_PACKAGES" ]]; then \
-        apt install --no-install-recommends -y ${LINUX_PACKAGES//,/ }; \
-    fi && \
-    if [[ -n "$LINUX_PACKAGES_VERSIONED" ]]; then \
-        apt install --no-install-recommends -y ${LINUX_PACKAGES_VERSIONED//,/ }; \
-    fi && \
+    apt install --no-install-recommends -y cron supervisor ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # PHP Extensions
-ARG PHP_EXTENSIONS
-ARG PHP_EXTENSIONS_VERSIONED
+ARG PHP_EXT
+ARG PHP_EXT_VERSIONED
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 RUN chmod +x /usr/local/bin/install-php-extensions && \
-    install-php-extensions @composer ${PHP_EXTENSIONS//,/ } ${PHP_EXTENSIONS_VERSIONED//,/ } && \
+    install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
     apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# NodeJS
-ARG NODE_VERSION
-ARG NODE_VERSION_VERSIONED
-RUN if [[ -n "$NODE_VERSION_VERSIONED" ]]; then \
-        curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION_VERSIONED.x | bash - && \
-        apt install --no-install-recommends -y nodejs && \
-        npm i -g npm@latest; \
-    elif [[ -n "$NODE_VERSION" ]]; then \
-        curl -fsSL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash - && \
-        apt install --no-install-recommends -y nodejs && \
-        npm i -g npm@latest; \
-    fi && \
-    apt clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
-
-# Add synced system user and install sudo
+# Add synced system user and install sudo after user creation
 ARG UID
 ARG GID
 RUN apt update && \
@@ -60,5 +40,14 @@ RUN apt update && \
     apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
+# Configure supervisord
+RUN mkdir -p /etc/supervisor/conf.d
+
+# Configure cron
+RUN touch /var/log/cron.log
+
 USER devuser
 WORKDIR /app
+
+# Run supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

@@ -1,0 +1,57 @@
+name: devtainer
+networks:
+  frontend:
+    name: Frontend
+    driver: bridge
+  backend:
+    name: Backend
+    driver: bridge
+
+services:
+  nginx:
+    container_name: NGINX
+    image: nginx:${NGINX_VERSION:-latest}
+    profiles:
+      - nginx
+    restart: always
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/app"
+      - ./docker/logs/nginx:/var/log/nginx
+      - ./configuration/nginx:/etc/nginx/conf.d
+      - ./configuration/ssl:/etc/ssl/certs
+      - ./configuration/ssl:/etc/ssl/private
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+    command: ["/bin/sh", "-c", "nginx -g 'daemon off;'"]
+
+  apache:
+    container_name: APACHE
+    build:
+      context: docker/conf/docker-files
+      dockerfile: apache.Dockerfile
+    profiles:
+      - apache
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/var/www/html"
+      - ./configuration/ssl:/etc/apache2/ssl
+      - ./docker/logs/apache:/var/log/apache2
+      - ./configuration/ssh:/home/devuser/.ssh
+      - ./configuration/apache:/etc/apache2/sites-available
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    networks:
+      - frontend
+    command: ["apache2-foreground"]

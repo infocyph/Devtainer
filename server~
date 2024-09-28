@@ -3,60 +3,123 @@
 # Exit on error and treat unset variables as errors
 set -euo pipefail
 
-# **Check for Required Dependencies**
-required_commands=("docker" "readlink")
-for cmd in "${required_commands[@]}"; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo >&2 "Error: '$cmd' is not installed. Aborting."; exit 1; }
-done
-
-# Check for the .env file
-if [ ! -f ".env" ]; then
-  echo "Error: .env file is missing!"
-  exit 1
-fi
-
-# **Load environment variables**
-#loadEnv() {
-#  (set -a && . ./.env && "$@")
-#}
-
 # Get the current working directory
-directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0";)")"
+directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
 
-# Update or insert WORKING_DIR in the .env file
-if grep -qF "WORKING_DIR=" "$directory/.env"; then
-  existing=$(grep "WORKING_DIR=" "$directory/.env" | cut -d '=' -f 2)
-  if [ -z "$existing" ]; then
-    sed -i "s|WORKING_DIR=.*|WORKING_DIR=$directory|" "$directory/.env"
+# Load .env function (if necessary)
+loadEnv() {
+  (set -a && . ./.env && "$@")
+}
+
+# Reload Nginx and Apache containers gracefully
+reload_http_containers() {
+  # Reload Nginx
+  if [ "$(docker ps -q -f name=NGINX)" ]; then
+    echo "- Reloading Nginx container (NGINX)..."
+    docker exec -it NGINX nginx -s reload
   fi
-else
-  echo -e "\nWORKING_DIR=$directory" >> "$directory/.env"
-fi
 
-# **Ensure Necessary Configuration Files Exist**
-config_files=(
-  "${directory}/configuration/php/php.ini"
-  "${directory}/configuration/scheduler/supervisor-worker.conf"
-  "${directory}/configuration/scheduler/supervisor-logrotate"
-)
+  # Gracefully reload Apache
+  if [ "$(docker ps -q -f name=APACHE)" ]; then
+    echo "- Gracefully reloading Apache container (APACHE)..."
+    docker exec -it APACHE apachectl graceful
+  fi
+}
 
-#for file in "${config_files[@]}"; do
-#  [ -f "$file" ] || touch "$file"
-#done
+# Check required commands
+check_required_commands() {
+  local commands=("$@")
+  for cmd in "${commands[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo >&2 "- Error: '$cmd' is not installed! Aborting."
+      exit 1
+    fi
+  done
+}
 
-# **Copy necessary configuration files**
-find "${directory}/configuration/apache/" -type f -name "*.conf" -exec cp -ua {} "${directory}/docker/conf/docker-files/apache/" \;
-find "${directory}/configuration/scheduler/" -type f ! -name ".gitignore" -exec cp -ua {} "${directory}/docker/conf/docker-files/cli/" \;
+# Check for the existence of necessary files
+check_file_existence() {
+  local files=("$@")
 
-# **Docker Compose Function**
+  for file in "${files[@]}"; do
+    local full_path="${directory}${file}"
+
+    if [ ! -f "$full_path" ]; then
+      echo "- Error: $full_path file is missing! Aborting."
+      exit 1
+    fi
+  done
+}
+
+# Update or insert a variable in the .env file
+update_env() {
+  local env_file="${directory}$1" # Prepend $directory to the provided env_file path
+  local var_name="$2"
+  local var_value="$3"
+
+  if grep -qF "${var_name}=" "$env_file"; then
+    local existing="$(grep "${var_name}=" "$env_file" | cut -d '=' -f 2)"
+    if [ -z "$existing" ]; then
+      sed -i "s|${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+      echo "- Updated ${var_name} in $env_file."
+    fi
+  else
+    echo -e "\n${var_name}=${var_value}" >>"$env_file"
+    echo "- Added ${var_name} to $env_file."
+  fi
+}
+
+# Ensure necessary files exist, creating them if they don't
+ensure_files_exist() {
+  local files=("$@")
+
+  for file in "${files[@]}"; do
+    local full_path="${directory}${file}"
+    local dir
+    dir=$(dirname "$full_path")
+
+    if [ ! -d "$dir" ]; then
+      echo "- Creating directory $dir."
+      mkdir -p "$dir"
+    fi
+
+    if [ ! -f "$full_path" ]; then
+      echo "- Creating file $full_path."
+      touch "$full_path"
+    fi
+  done
+}
+
+# Copy files while optionally excluding specific patterns
+copy_files() {
+  local full_source="${directory}$1"
+  local full_destination="${directory}$2"
+  local exclude_pattern="${4:-}"
+
+  if [ ! -d "$full_destination" ]; then
+    echo "- Creating directory $full_destination for copying files."
+    mkdir -p "$full_destination"
+  fi
+
+  if [ -n "$exclude_pattern" ]; then
+    find "$full_source" -type f -name "$3" ! -name "$exclude_pattern" -exec cp -ua {} "$full_destination" \;
+  else
+    find "$full_source" -type f -name "$3" -exec cp -ua {} "$full_destination" \;
+  fi
+}
+
+# Wrapper for docker compose command
 docker_compose() {
   docker compose --project-directory "$directory" -f "$directory/docker/compose/docker-compose.yml" "$@"
 }
 
-# **Usage Function**
+# Display usage information
 usage() {
   cat <<EOF
-Usage: $0 {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?}
+Usage:
+$0 {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?}
+or
+server {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?} (if you added the directory path in the System Environment Variables)
 
 Commands:
   up               Start Docker services (foreground)
@@ -71,38 +134,61 @@ Commands:
 EOF
 }
 
-# **Script Operations Based on Input Arguments**
+if [ $# -eq 0 ]; then
+  echo "Error: No command provided."
+  usage
+  exit 1
+fi
+check_required_commands "docker" "readlink"
+check_file_existence "/.env"
+update_env "/.env" "WORKING_DIR" "$directory"
+ensure_files_exist \
+  "/configuration/php/php.ini" \
+  "/configuration/scheduler/supervisor-worker.conf" \
+  "/configuration/scheduler/supervisor-logrotate"
+copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
+#copy_files "/configuration/apache/" "/docker/conf/docker-files/apache/" "*.conf"
+
+# Handle the provided command
 case "$1" in
-  up)
-    docker_compose up
-    ;;
-  start | reload)
-    docker_compose up -d
-    ;;
-  stop | down)
-    docker_compose down
-    ;;
-  reboot | restart)
-    docker_compose down && docker_compose up -d
-    ;;
-  rebuild)
-    docker_compose down && docker_compose build --no-cache --pull "${@:2}"
-    ;;
-  core)
-    docker exec -it Core bash -c "sudo -u devuser /bin/bash"
-    ;;
-  tools)
-    docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
-    ;;
-  lzd)
-    docker exec -it SERVER_TOOLS lazydocker
-    ;;
-  help)
-    usage
-    ;;
-  *)
-    echo "Invalid command: $1"
-    usage
-    exit 1
-    ;;
+up)
+  docker_compose up
+  ;;
+start | reload)
+  docker_compose up -d
+  reload_http_containers
+  ;;
+stop | down)
+  docker_compose down
+  ;;
+reboot | restart)
+  docker_compose down && docker_compose up -d
+  reload_http_containers
+  ;;
+rebuild)
+  docker_compose down && docker_compose build --no-cache --pull "${@:2}"
+  ;;
+http)
+  if [ "$2" = reload ]; then
+    reload_http_containers
+  fi
+  ;;
+core)
+  docker exec -it Core bash -c "sudo -u devuser /bin/bash"
+  ;;
+tools)
+  docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
+  ;;
+lzd)
+  docker exec -it SERVER_TOOLS lazydocker
+  ;;
+help)
+  usage
+  ;;
+*)
+  echo "Invalid command: $1"
+  usage
+  exit 1
+  ;;
 esac
+unset directory
