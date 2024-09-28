@@ -1,0 +1,243 @@
+name: devtainer
+networks:
+  frontend:
+    name: Frontend
+    driver: bridge
+  backend:
+    name: Backend
+    driver: bridge
+
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    environment:
+      - DB_SQLITE_FILE=/data/database.sqlite
+      - DISABLE_IPV6=true
+      - PUID=1000
+      - PGID=1000
+      - X_FRAME_OPTIONS=sameorigin
+    volumes:
+      - "${PROJECT_DIR:-./../application}:/application"
+      - ./docker/data/proxy:/data
+      - ./docker/data/letsencrypt:/etc/letsencrypt
+    networks:
+      - frontend
+
+  mysql-server:
+    container_name: MYSQL
+    image: ${MYSQL_IMAGE:-mariadb}:${MYSQL_VERSION:-latest}
+    profiles:
+      - mysql
+      - mariadb
+    restart: always
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-12345}
+      - MYSQL_USER=${MYSQL_USER:-devuser}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-12345}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-localdb}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./docker/data/mysql:/var/lib/mysql
+      - ./docker/logs/mysql:/var/log/mysql
+    networks:
+      - backend
+
+  mysql-client:
+    container_name: MY_ADMIN
+    image: phpmyadmin:latest
+    profiles:
+      - mysql
+      - mariadb
+    restart: always
+    ports:
+      - "${MYADMIN_PORT:-3300}:80"
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=mysql-server
+      - PMA_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-12345}
+      - MYSQL_USER=${MYSQL_USER:-devuser}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-12345}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ./docker/data/phpmyadmin:/etc/phpmyadmin/conf.d:ro
+    depends_on:
+      - mysql-server
+    networks:
+      - frontend
+      - backend
+
+  postgres-server:
+    container_name: POSTGRESQL
+    image: postgres:${POSTGRESQL_VERSION:-latest}
+    profiles:
+      - postgresql
+    restart: always
+    ports:
+      - "${POSTGRESQL_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./docker/data/postgresql:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  postgres-client:
+    container_name: PG_ADMIN
+    image: dpage/pgadmin4:latest
+    profiles:
+      - postgresql
+    restart: always
+    ports:
+      - "${PGADMIN_PORT:-5400}:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@email.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./docker/data/pgadmin:/var/lib/pgadmin
+    depends_on:
+      - postgres-server
+    networks:
+      - frontend
+      - backend
+
+  mongo-server:
+    container_name: MONGODB
+    image: mongo:${MONGODB_VERSION:-latest}
+    profiles:
+      - mongodb
+    restart: always
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - TZ=${TZ:-Asia/Dhaka}
+    logging:
+      options:
+        max-size: 1g
+    networks:
+      - backend
+
+  mongo-client:
+    container_name: MONGO_ADMIN
+    image: mongo-express:${ME_VERSION:-latest}
+    profiles:
+      - mongodb
+    restart: always
+    ports:
+      - "${ME_PORT:-8081}:8081"
+    environment:
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_BA_USERNAME:-root}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_BA_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo:${MONGODB_PORT:-27017}/
+      - TZ=${TZ:-Asia/Dhaka}
+    depends_on:
+      - mongo-server
+    networks:
+      - frontend
+      - backend
+
+  elasticsearch-server:
+    container_name: ELASTICSEARCH
+    image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch
+    restart: always
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - discovery.type='single-node'
+      - xpack.security.enabled='false'
+    volumes:
+      - ./docker/data/elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      - backend
+
+  elasticsearch-client:
+    container_name: KIBANA
+    image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch
+    restart: always
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - ELASTICSEARCH_HOSTS='["http://elasticsearch-server:${ELASTICSEARCH_PORT:-9200}"]'
+    depends_on:
+      - elasticsearch-server
+    networks:
+      - frontend
+      - backend
+
+  redis-server:
+    container_name: REDIS
+    image: redis/redis-stack-server:${REDIS_VERSION:-latest}
+    profiles:
+      - redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./docker/data/redis:/data
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_ARGS = "--save 10 1 --appendonly yes"
+    networks:
+      - backend
+
+  redis-client:
+    container_name: REDIS_INSIGHT
+    image: redis/redisinsight:latest
+    profiles:
+      - redis
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    ports:
+      - "${RI_PORT:-5540}:5540"
+    volumes:
+      - ./docker/data/redis-insight:/data
+    depends_on:
+      - redis-server
+    networks:
+      - frontend
+      - backend
+
+  server-tools:
+    container_name: SERVER_TOOLS
+    build:
+      context: docker/conf/docker-files
+      dockerfile: tools.Dockerfile
+      args:
+        UID: ${UID:-1000}
+    profiles:
+      - tools
+    restart: always
+    links:
+      - app
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./configuration/ssl:/etc/ssl/custom
+      - ./configuration/ssh:/home/devuser/.ssh
+      - ./../application:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - devtainer-net

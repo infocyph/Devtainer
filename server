@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Exit on error and treat unset variables as errors
+set -euo pipefail
+
+# **Check for Required Dependencies**
+required_commands=("docker" "readlink")
+for cmd in "${required_commands[@]}"; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo >&2 "Error: '$cmd' is not installed. Aborting."; exit 1; }
+done
+
+# Check for the .env file
+if [ ! -f ".env" ]; then
+  echo "Error: .env file is missing!"
+  exit 1
+fi
+
+# **Load environment variables**
+#loadEnv() {
+#  (set -a && . ./.env && "$@")
+#}
+
+# Get the current working directory
+directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0";)")"
+
+# Update or insert WORKING_DIR in the .env file
+if grep -qF "WORKING_DIR=" "$directory/.env"; then
+  existing=$(grep "WORKING_DIR=" "$directory/.env" | cut -d '=' -f 2)
+  if [ -z "$existing" ]; then
+    sed -i "s|WORKING_DIR=.*|WORKING_DIR=$directory|" "$directory/.env"
+  fi
+else
+  echo -e "\nWORKING_DIR=$directory" >> "$directory/.env"
+fi
+
+# **Ensure Necessary Configuration Files Exist**
+config_files=(
+  "${directory}/configuration/php/php.ini"
+  "${directory}/configuration/scheduler/supervisor-worker.conf"
+  "${directory}/configuration/scheduler/supervisor-logrotate"
+)
+
+#for file in "${config_files[@]}"; do
+#  [ -f "$file" ] || touch "$file"
+#done
+
+# **Copy necessary configuration files**
+#find "${directory}/configuration/apache/" -type f -name "*.conf" -exec cp -ua {} "${directory}/docker/conf/docker-files/apache/" \;
+#find "${directory}/configuration/scheduler/" -type f ! -name ".gitignore" -exec cp -ua {} "${directory}/docker/conf/docker-files/cli/" \;
+
+# **Docker Compose Function**
+docker_compose() {
+  docker compose --project-directory "$directory" -f "$directory/docker/compose/docker-compose.yml" "$@"
+}
+
+# **Usage Function**
+usage() {
+  cat <<EOF
+Usage: $0 {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?}
+
+Commands:
+  up               Start Docker services (foreground)
+  start, reload    Start or reload Docker services (background)
+  stop, down       Stop or shut down Docker services
+  reboot, restart  Restart Docker services
+  rebuild          Rebuild Docker images with no cache
+  core             Access the Core container as 'devuser'
+  tools            Access the SERVER_TOOLS container as 'devuser'
+  lzd              Launch LazyDocker in the SERVER_TOOLS container
+  help             Show this usage guide
+EOF
+}
+
+# **Script Operations Based on Input Arguments**
+case "$1" in
+  up)
+    docker_compose up
+    ;;
+  start | reload)
+    docker_compose up -d
+    ;;
+  stop | down)
+    docker_compose down
+    ;;
+  reboot | restart)
+    docker_compose down && docker_compose up -d
+    ;;
+  rebuild)
+    docker_compose down && docker_compose build --no-cache --pull "${@:2}"
+    ;;
+  core)
+    docker exec -it Core bash -c "sudo -u devuser /bin/bash"
+    ;;
+  tools)
+    docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
+    ;;
+  lzd)
+    docker exec -it SERVER_TOOLS lazydocker
+    ;;
+  help)
+    usage
+    ;;
+  *)
+    echo "Invalid command: $1"
+    usage
+    exit 1
+    ;;
+esac
