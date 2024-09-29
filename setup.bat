@@ -30,5 +30,5 @@ set "directory=%directory:~0,-1%"
 setx directory "%directory%"
 
 :run_bash
-"%git_bash_path%" "%directory%\server" %*
+"%git_bash_path%" "%directory%\setup" %*
 endlocal

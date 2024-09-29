@@ -28,14 +28,12 @@ services:
     profiles:
       - tools
     restart: always
-    links:
-      - app
     environment:
       - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./configuration/ssl:/etc/ssl/custom
       - ./configuration/ssh:/home/devuser/.ssh
-      - ./../application:/app
+      - "${PROJECT_DIR:-./../application}:/app"
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - devtainer-net

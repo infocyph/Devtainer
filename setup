@@ -1,0 +1,270 @@
+#!/bin/bash
+
+# Function to prompt for server type
+function choose_server_type() {
+    echo "Choose the server to configure:"
+    PS3="Enter the number: "
+    options=("Nginx" "Apache")
+    select server_type in "${options[@]}"; do
+        case $server_type in
+            "Nginx")
+                SERVER_TYPE="nginx"
+                break
+                ;;
+            "Apache")
+                SERVER_TYPE="apache"
+                break
+                ;;
+            *)
+                echo "Invalid option, please select again."
+                ;;
+        esac
+    done
+}
+
+# Function to validate user inputs (not empty)
+function validate_input() {
+    local input="$1"
+    local message="$2"
+    while [[ -z "$input" ]]; do
+        echo "$message"
+        read -r input
+    done
+    echo "$input"
+}
+
+# Function to prompt for site details with a predefined PHP version selection
+function prompt_site_details() {
+    read -r -p "Enter the site ServerName (e.g., site1.local): " SERVER_NAME
+    SERVER_NAME=$(validate_input "$SERVER_NAME" "ServerName cannot be empty. Please enter a valid ServerName:")
+
+    read -r -p "Enter the DocumentRoot (e.g., /var/www/html/site1): " DOC_ROOT
+    DOC_ROOT=$(validate_input "$DOC_ROOT" "DocumentRoot cannot be empty. Please enter a valid DocumentRoot:")
+
+    read -r -p "Enter the maximum client body size (e.g., 12M): " CLIENT_MAX_BODY_SIZE
+    CLIENT_MAX_BODY_SIZE=$(validate_input "$CLIENT_MAX_BODY_SIZE" "Client body size cannot be empty. Please enter a valid value (e.g., 12M):")
+
+    # Predefined PHP version selection
+    echo "Select the PHP version:"
+    PS3="Enter the number: "
+    options=("8.0" "8.1" "8.2" "8.3" "8.4")
+    select PHP_VERSION in "${options[@]}"; do
+        if [[ -n "$PHP_VERSION" ]]; then
+            echo "You have selected PHP version $PHP_VERSION."
+            break
+        else
+            echo "Invalid option, please select a valid PHP version."
+        fi
+    done
+
+    PHP_CONTAINER="php${PHP_VERSION//./}"  # Create container name dynamically
+    CONFIG_FILE="${SERVER_TYPE}.php${PHP_CONTAINER}.conf"
+}
+
+
+# Function to prompt for additional configuration options (redirection, HTTPS)
+function prompt_additional_options() {
+    read -r -p "Enable HTTPS (y/n)? " ENABLE_HTTPS
+    if [[ "$ENABLE_HTTPS" != "y" && "$ENABLE_HTTPS" != "n" ]]; then
+        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
+        prompt_additional_options
+    fi
+
+    read -r -p "Set up HTTP to HTTPS redirection (y/n)? " ENABLE_REDIRECTION
+    if [[ "$ENABLE_REDIRECTION" != "y" && "$ENABLE_REDIRECTION" != "n" ]]; then
+        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
+        prompt_additional_options
+    fi
+}
+
+# Function to generate SSL certificate using mkcert
+function create_ssl_certificate() {
+    if [[ "$ENABLE_HTTPS" == "y" ]]; then
+        echo "Creating SSL certificates using mkcert..."
+#        mkcert "$SERVER_NAME"
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Failed to generate SSL certificates using mkcert. Exiting."
+            exit 1
+        fi
+#        SSL_CERT_FILE="$(mkcert -CAROOT)/$SERVER_NAME.pem"
+#        SSL_CERT_KEY_FILE="$(mkcert -CAROOT)/$SERVER_NAME-key.pem"
+        SSL_CERT_FILE="sthing/$SERVER_NAME.pem"
+        SSL_CERT_KEY_FILE="sthing/$SERVER_NAME-key.pem"
+    fi
+}
+
+# Function to add server-specific settings (e.g., gzip, PHP settings)
+function server_specific_settings() {
+    if [[ "$SERVER_TYPE" == "nginx" ]]; then
+        read -r -p "Enable GZIP compression (y/n)? " ENABLE_GZIP
+        if [[ "$ENABLE_GZIP" == "y" ]]; then
+            GZIP_CONFIG="gzip on;"
+        else
+            GZIP_CONFIG="gzip off;"
+        fi
+    elif [[ "$SERVER_TYPE" == "apache" ]]; then
+        read -r -p "Enable PHP error display (y/n)? " ENABLE_PHP_ERRORS
+        if [[ "$ENABLE_PHP_ERRORS" == "y" ]]; then
+            PHP_ERROR_SETTING="php_flag display_errors on"
+        else
+            PHP_ERROR_SETTING="php_flag display_errors off"
+        fi
+    fi
+}
+
+# Function to create Nginx base configuration
+function create_nginx_base_config() {
+    cat <<EOL >> "$CONFIG_FILE"
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+    root $DOC_ROOT;
+    index index.php index.html;
+    client_max_body_size $CLIENT_MAX_BODY_SIZE;
+    $GZIP_CONFIG
+
+    location / {
+        try_files \$uri \$uri/ /index.php\$is_args\$args;
+    }
+
+    location ~ \.php\$ {
+        fastcgi_pass $PHP_CONTAINER:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
+}
+EOL
+}
+
+# Function to add HTTPS configuration to Nginx
+function add_nginx_https() {
+    if [[ "$ENABLE_HTTPS" == "y" ]]; then
+        cat <<EOL >> "$CONFIG_FILE"
+server {
+    listen 443 ssl;
+    server_name $SERVER_NAME;
+
+    ssl_certificate $SSL_CERT_FILE;
+    ssl_certificate_key $SSL_CERT_KEY_FILE;
+
+    root $DOC_ROOT;
+    index index.php index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.php\$is_args\$args;
+    }
+
+    location ~ \.php\$ {
+        fastcgi_pass $PHP_CONTAINER:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
+}
+EOL
+    fi
+}
+
+# Function to add redirection to Nginx
+function add_nginx_redirection() {
+    if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+        cat <<EOL >> "$CONFIG_FILE"
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+
+    return 301 https://\$host\$request_uri;
+}
+EOL
+    fi
+}
+
+# Function to create Apache base configuration
+function create_apache_base_config() {
+    cat <<EOL >> "$CONFIG_FILE"
+<VirtualHost *:80>
+    ServerName $SERVER_NAME
+    DocumentRoot $DOC_ROOT
+
+    <Directory $DOC_ROOT>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    LimitRequestBody $(echo $CLIENT_MAX_BODY_SIZE | tr -d 'M')000000  # Converts to bytes for Apache
+
+    ErrorLog \${APACHE_LOG_DIR}/$SERVER_NAME-error.log
+    CustomLog \${APACHE_LOG_DIR}/$SERVER_NAME-access.log combined
+    $PHP_ERROR_SETTING
+</VirtualHost>
+EOL
+}
+
+# Function to add HTTPS configuration to Apache
+function add_apache_https() {
+    if [[ "$ENABLE_HTTPS" == "y" ]]; then
+        cat <<EOL >> "$CONFIG_FILE"
+<VirtualHost *:443>
+    ServerName $SERVER_NAME
+    DocumentRoot $DOC_ROOT
+
+    <Directory $DOC_ROOT>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    SSLEngine on
+    SSLCertificateFile $SSL_CERT_FILE
+    SSLCertificateKeyFile $SSL_CERT_KEY_FILE
+
+    ErrorLog \${APACHE_LOG_DIR}/$SERVER_NAME-error.log
+    CustomLog \${APACHE_LOG_DIR}/$SERVER_NAME-access.log combined
+</VirtualHost>
+EOL
+    fi
+}
+
+# Function to add redirection to Apache
+function add_apache_redirection() {
+    if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+        cat <<EOL >> "$CONFIG_FILE"
+<VirtualHost *:80>
+    ServerName $SERVER_NAME
+    Redirect permanent / https://$SERVER_NAME/
+</VirtualHost>
+EOL
+    fi
+}
+
+# Main logic for configuring server
+function configure_server() {
+    choose_server_type
+    prompt_site_details
+    prompt_additional_options
+    create_ssl_certificate
+    server_specific_settings
+
+    if [[ "$SERVER_TYPE" == "nginx" ]]; then
+        create_nginx_base_config
+        add_nginx_https
+        add_nginx_redirection
+    elif [[ "$SERVER_TYPE" == "apache" ]]; then
+        create_apache_base_config
+        add_apache_https
+        add_apache_redirection
+    fi
+
+    echo "Configuration for $SERVER_NAME has been saved to $CONFIG_FILE"
+}
+
+# Start configuration process
+while true; do
+    configure_server
+    read -r -p "Do you want to configure another site? (y/n): " CONTINUE
+    if [[ "$CONTINUE" != "y" ]]; then
+        break
+    fi
+done
+
+echo "All configurations have been completed."
