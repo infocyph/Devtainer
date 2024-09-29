@@ -137,7 +137,7 @@ copy_files() {
 
 # Wrapper for docker compose command
 docker_compose() {
-  docker compose --project-directory "$directory" -f "$directory/docker/compose/docker-compose.yml" "$@"
+  docker compose --project-directory "$directory" -f "$directory/docker/compose/main.yaml" "$@"
 }
 
 check_required_commands "docker" "readlink"

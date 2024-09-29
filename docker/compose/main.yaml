@@ -8,6 +8,6 @@ networks:
     driver: bridge
 
 include:
-  - docker/compose/http.yml
-  - docker/compose/php-fpm.yml
-  - docker/compose/php-cli.yml
+  - docker/compose/http.yaml
+  - docker/compose/php-fpm.yaml
+  - docker/compose/php-cli.yaml
