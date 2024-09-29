@@ -1,0 +1,39 @@
+services:
+  mongo-server:
+    container_name: MONGODB
+    image: mongo:${MONGODB_VERSION:-latest}
+    profiles:
+      - mongodb
+    restart: always
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - TZ=${TZ:-Asia/Dhaka}
+    logging:
+      options:
+        max-size: 1g
+    networks:
+      - backend
+
+  mongo-client:
+    container_name: MONGO_ADMIN
+    image: mongo-express:${ME_VERSION:-latest}
+    profiles:
+      - mongodb
+    restart: always
+    ports:
+      - "${ME_PORT:-8081}:8081"
+    environment:
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_BA_USERNAME:-root}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_BA_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo:${MONGODB_PORT:-27017}/
+      - TZ=${TZ:-Asia/Dhaka}
+    depends_on:
+      - mongo-server
+    networks:
+      - frontend
+      - backend

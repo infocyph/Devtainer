@@ -1,0 +1,33 @@
+services:
+  elasticsearch-server:
+    container_name: ELASTICSEARCH
+    image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch
+    restart: always
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - discovery.type='single-node'
+      - xpack.security.enabled='false'
+    volumes:
+      - ./docker/data/elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      - backend
+  elasticsearch-client:
+    container_name: KIBANA
+    image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch
+    restart: always
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - ELASTICSEARCH_HOSTS='["http://elasticsearch-server:${ELASTICSEARCH_PORT:-9200}"]'
+    depends_on:
+      - elasticsearch-server
+    networks:
+      - frontend
+      - backend

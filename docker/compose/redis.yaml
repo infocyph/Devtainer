@@ -1,0 +1,33 @@
+services:
+  redis-server:
+    container_name: REDIS
+    image: redis/redis-stack-server:${REDIS_VERSION:-latest}
+    profiles:
+      - redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./docker/data/redis:/data
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_ARGS = "--save 10 1 --appendonly yes"
+    networks:
+      - backend
+  redis-client:
+    container_name: REDIS_INSIGHT
+    image: redis/redisinsight:latest
+    profiles:
+      - redis
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+    ports:
+      - "${RI_PORT:-5540}:5540"
+    volumes:
+      - ./docker/data/redis-insight:/data
+    depends_on:
+      - redis-server
+    networks:
+      - frontend
+      - backend
