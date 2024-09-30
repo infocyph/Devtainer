@@ -137,16 +137,69 @@ copy_files() {
 
 # Wrapper for docker compose command
 docker_compose() {
-  docker compose --project-directory "$directory" -f "$directory/docker/compose/main.yaml" "$@"
+  docker compose --project-directory "$directory" -f "$directory/docker/compose/main.yaml" --env-file "$directory/docker/.env" "$@"
+}
+
+# Function to assign the correct permissions
+assign_permissions() {
+
+  if [[ "$(uname -s)" == *NT* || "$(uname -o)" == *Msys* || "$(uname -o)" == *Cygwin* ]]; then
+    return
+  fi
+
+  # Set global permission on the $directory
+  if [ "$(stat -c "%a" "$directory")" != "755" ]; then
+    chmod 755 "$directory"
+  fi
+
+  if [ "$(stat -c "%a" "$directory/configuration/")" != "775" ]; then
+    chmod 775 "$directory/configuration/"
+  fi
+  find "$directory/configuration/" -type f ! -perm 664 -exec chmod 664 {} \;
+  chmod g+s "$directory/configuration/"
+
+  if [ "$(stat -c "%a" "$directory/docker/")" != "755" ]; then
+    chmod 755 "$directory/docker/"
+  fi
+  find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
+
+  if [ "$(stat -c "%a" "$directory/data/")" != "775" ]; then
+    chmod 775 "$directory/data/"
+  fi
+  find "$directory/data/" -type f ! -perm 660 -exec chmod 660 {} \;
+  chmod g+s "$directory/data/"
+  chown -R "$USER:docker" "$directory/data/"
+
+  if [ "$(stat -c "%a" "$directory/logs/")" != "775" ]; then
+    chmod 775 "$directory/logs/"
+  fi
+  find "$directory/logs/" -type f ! -perm 660 -exec chmod 660 {} \;
+  chmod g+s "$directory/logs/"
+  chown -R "$USER:docker" "$directory/logs/"
+
+  if [ "$(stat -c "%a" "$directory/bin/")" != "755" ]; then
+    chmod 755 "$directory/bin/"
+  fi
+  find "$directory/bin/" -type f ! -perm 744 -exec chmod 744 {} \;
+
+  if [ "$(stat -c "%a" "$directory/server")" != "744" ]; then
+    chmod 744 "$directory/server"
+  fi
+
+  if [ "$(stat -c "%a" "$directory/setup")" != "744" ]; then
+    chmod 744 "$directory/setup"
+  fi
 }
 
 check_required_commands "docker" "readlink"
+assign_permissions
 check_file_existence "/.env"
-update_env "/.env" "WORKING_DIR" "$directory"
 ensure_files_exist \
+  "/docker/.env" \
   "/configuration/php/php.ini" \
   "/configuration/scheduler/supervisor-worker.conf" \
   "/configuration/scheduler/supervisor-logrotate"
+update_env "/docker/.env" "WORKING_DIR" "$directory"
 copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
 #copy_files "/configuration/apache/" "/docker/conf/docker-files/apache/" "*.conf"
 
