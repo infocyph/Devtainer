@@ -14,8 +14,8 @@ services:
       - "${PROJECT_DIR:-./../application}:/app"
       - ./docker/logs/nginx:/var/log/nginx
       - ./configuration/nginx:/etc/nginx/conf.d
-      - ./configuration/ssl:/etc/ssl/certs
-      - ./configuration/ssl:/etc/ssl/private
+      - ./configuration/ssl:/etc/letsencrypt
+      - ./configuration/certbot:/var/www/certbot
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -40,10 +40,10 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - "${PROJECT_DIR:-./../application}:/var/www/html"
-      - ./configuration/ssl:/etc/apache2/ssl
+      - ./configuration/ssl:/etc/letsencrypt
       - ./docker/logs/apache:/var/log/apache2
-      - ./configuration/ssh:/home/devuser/.ssh
       - ./configuration/apache:/etc/apache2/sites-available
+      - ./configuration/certbot:/var/www/certbot
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks:
