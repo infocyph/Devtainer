@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Infinite loop to periodically renew certificates and reload web servers
+while true; do
+  # Renew certificates
+  certbot renew --quiet
+
+  # Check if Nginx container is running and reload if it is
+  if [ "$(docker ps -q -f name=NGINX)" ]; then
+    echo "Reloading Nginx..."
+    docker exec -it nginx nginx -s reload
+  fi
+
+  # Check if Apache container is running and reload if it is
+  if [ "$(docker ps -q -f name=APACHE)" ]; then
+    echo "Gracefully restarting Apache..."
+    docker exec -it apache apachectl graceful
+  fi
+
+  # Sleep for 12 hours before checking again
+  sleep 12h
+done

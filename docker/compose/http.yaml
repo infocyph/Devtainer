@@ -20,6 +20,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - frontend
+      - cert
     command: ["/bin/sh", "-c", "nginx -g 'daemon off;'"]
 
   apache:
@@ -47,3 +48,4 @@ services:
       - 'host.docker.internal:host-gateway'
     networks:
       - frontend
+      - cert

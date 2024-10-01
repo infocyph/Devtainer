@@ -1,5 +1,8 @@
 name: Devtainer
 networks:
+  cert:
+    name: Certificate
+    driver: bridge
   frontend:
     name: Frontend
     driver: bridge
@@ -11,7 +14,7 @@ include:
   - docker/compose/http.yaml
   - docker/compose/php-fpm.yaml
   - docker/compose/php-cli.yaml
-  - docker/compose/mysql.yml
+  - docker/compose/mysql.yaml
   - docker/compose/psql.yaml
   - docker/compose/mongo.yaml
   - docker/compose/elasticsearch.yaml
