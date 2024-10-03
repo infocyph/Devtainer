@@ -58,9 +58,9 @@ function prompt_site_details() {
     done
 
     PHP_CONTAINER="php${PHP_VERSION//./}"  # Create container name dynamically
-    CONFIG_FILE="${SERVER_TYPE}.php${PHP_CONTAINER}.conf"
+    LOG_DIR="/var/log/$SERVER_NAME"
+    CONFIG_FILE="$SERVER_NAME.conf"  # Configuration file named by domain
 }
-
 
 # Function to prompt for additional configuration options (redirection, HTTPS)
 function prompt_additional_options() {
@@ -75,166 +75,69 @@ function prompt_additional_options() {
         echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
         prompt_additional_options
     fi
+
+    read -r -p "Set up domain redirection (e.g., www.domain.com to domain.com)? (y/n): " ENABLE_DOMAIN_REDIRECTION
+    if [[ "$ENABLE_DOMAIN_REDIRECTION" != "y" && "$ENABLE_DOMAIN_REDIRECTION" != "n" ]]; then
+        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
+        prompt_additional_options
+    fi
 }
 
 # Function to generate SSL certificate using mkcert
 function create_ssl_certificate() {
     if [[ "$ENABLE_HTTPS" == "y" ]]; then
         echo "Creating SSL certificates using mkcert..."
-#        mkcert "$SERVER_NAME"
-        if [[ $? -ne 0 ]]; then
-            echo "Error: Failed to generate SSL certificates using mkcert. Exiting."
-            exit 1
-        fi
-#        SSL_CERT_FILE="$(mkcert -CAROOT)/$SERVER_NAME.pem"
-#        SSL_CERT_KEY_FILE="$(mkcert -CAROOT)/$SERVER_NAME-key.pem"
-        SSL_CERT_FILE="sthing/$SERVER_NAME.pem"
-        SSL_CERT_KEY_FILE="sthing/$SERVER_NAME-key.pem"
+        SSL_CERT_FILE="/etc/letsencrypt/live/$SERVER_NAME/fullchain.pem"
+        SSL_CERT_KEY_FILE="/etc/letsencrypt/live/$SERVER_NAME/privkey.pem"
+        SSL_CHAIN_FILE="/etc/letsencrypt/live/$SERVER_NAME/chain.pem"
     fi
 }
 
-# Function to add server-specific settings (e.g., gzip, PHP settings)
-function server_specific_settings() {
+# Function to generate configuration from template
+function generate_conf_from_template() {
+    local template_file=$1
+    local output_file=$2
+
+    # Replace placeholders in the template and create the new conf file
+    sed -e "s|{{SERVER_NAME}}|$SERVER_NAME|g" \
+        -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
+        -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
+        -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
+        -e "s|{{LOG_DIR}}|$LOG_DIR|g" \
+        -e "s|{{SSL_CERT_FILE}}|$SSL_CERT_FILE|g" \
+        -e "s|{{SSL_CERT_KEY_FILE}}|$SSL_CERT_KEY_FILE|g" \
+        -e "s|{{SSL_CHAIN_FILE}}|$SSL_CHAIN_FILE|g" \
+        "$template_file" >> "$output_file"
+}
+
+# Function to create configuration based on user input
+function create_configuration() {
     if [[ "$SERVER_TYPE" == "nginx" ]]; then
-        read -r -p "Enable GZIP compression (y/n)? " ENABLE_GZIP
-        if [[ "$ENABLE_GZIP" == "y" ]]; then
-            GZIP_CONFIG="gzip on;"
+        if [[ "$ENABLE_DOMAIN_REDIRECTION" == "y" ]]; then
+            generate_conf_from_template "domain.redirect.nginx.conf" "$CONFIG_FILE"
+        fi
+        if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+            generate_conf_from_template "redirect.nginx.conf" "$CONFIG_FILE"
+        fi
+        if [[ "$ENABLE_HTTPS" == "y" ]]; then
+            generate_conf_from_template "https.nginx.conf" "$CONFIG_FILE"
         else
-            GZIP_CONFIG="gzip off;"
+            generate_conf_from_template "http.nginx.conf" "$CONFIG_FILE"
         fi
     elif [[ "$SERVER_TYPE" == "apache" ]]; then
-        read -r -p "Enable PHP error display (y/n)? " ENABLE_PHP_ERRORS
-        if [[ "$ENABLE_PHP_ERRORS" == "y" ]]; then
-            PHP_ERROR_SETTING="php_flag display_errors on"
+        if [[ "$ENABLE_DOMAIN_REDIRECTION" == "y" ]]; then
+            generate_conf_from_template "domain.redirect.apache.conf" "$CONFIG_FILE"
+        fi
+        if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+            generate_conf_from_template "redirect.apache.conf" "$CONFIG_FILE"
+        fi
+        if [[ "$ENABLE_HTTPS" == "y" ]]; then
+            generate_conf_from_template "https.apache.conf" "$CONFIG_FILE"
         else
-            PHP_ERROR_SETTING="php_flag display_errors off"
+            generate_conf_from_template "http.apache.conf" "$CONFIG_FILE"
         fi
     fi
-}
-
-# Function to create Nginx base configuration
-function create_nginx_base_config() {
-    cat <<EOL >> "$CONFIG_FILE"
-server {
-    listen 80;
-    server_name $SERVER_NAME;
-    root $DOC_ROOT;
-    index index.php index.html;
-    client_max_body_size $CLIENT_MAX_BODY_SIZE;
-    $GZIP_CONFIG
-
-    location / {
-        try_files \$uri \$uri/ /index.php\$is_args\$args;
-    }
-
-    location ~ \.php\$ {
-        fastcgi_pass $PHP_CONTAINER:9000;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-    }
-}
-EOL
-}
-
-# Function to add HTTPS configuration to Nginx
-function add_nginx_https() {
-    if [[ "$ENABLE_HTTPS" == "y" ]]; then
-        cat <<EOL >> "$CONFIG_FILE"
-server {
-    listen 443 ssl;
-    server_name $SERVER_NAME;
-
-    ssl_certificate $SSL_CERT_FILE;
-    ssl_certificate_key $SSL_CERT_KEY_FILE;
-
-    root $DOC_ROOT;
-    index index.php index.html;
-
-    location / {
-        try_files \$uri \$uri/ /index.php\$is_args\$args;
-    }
-
-    location ~ \.php\$ {
-        fastcgi_pass $PHP_CONTAINER:9000;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-    }
-}
-EOL
-    fi
-}
-
-# Function to add redirection to Nginx
-function add_nginx_redirection() {
-    if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
-        cat <<EOL >> "$CONFIG_FILE"
-server {
-    listen 80;
-    server_name $SERVER_NAME;
-
-    return 301 https://\$host\$request_uri;
-}
-EOL
-    fi
-}
-
-# Function to create Apache base configuration
-function create_apache_base_config() {
-    cat <<EOL >> "$CONFIG_FILE"
-<VirtualHost *:80>
-    ServerName $SERVER_NAME
-    DocumentRoot $DOC_ROOT
-
-    <Directory $DOC_ROOT>
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    LimitRequestBody $(echo $CLIENT_MAX_BODY_SIZE | tr -d 'M')000000  # Converts to bytes for Apache
-
-    ErrorLog \${APACHE_LOG_DIR}/$SERVER_NAME-error.log
-    CustomLog \${APACHE_LOG_DIR}/$SERVER_NAME-access.log combined
-    $PHP_ERROR_SETTING
-</VirtualHost>
-EOL
-}
-
-# Function to add HTTPS configuration to Apache
-function add_apache_https() {
-    if [[ "$ENABLE_HTTPS" == "y" ]]; then
-        cat <<EOL >> "$CONFIG_FILE"
-<VirtualHost *:443>
-    ServerName $SERVER_NAME
-    DocumentRoot $DOC_ROOT
-
-    <Directory $DOC_ROOT>
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    SSLEngine on
-    SSLCertificateFile $SSL_CERT_FILE
-    SSLCertificateKeyFile $SSL_CERT_KEY_FILE
-
-    ErrorLog \${APACHE_LOG_DIR}/$SERVER_NAME-error.log
-    CustomLog \${APACHE_LOG_DIR}/$SERVER_NAME-access.log combined
-</VirtualHost>
-EOL
-    fi
-}
-
-# Function to add redirection to Apache
-function add_apache_redirection() {
-    if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
-        cat <<EOL >> "$CONFIG_FILE"
-<VirtualHost *:80>
-    ServerName $SERVER_NAME
-    Redirect permanent / https://$SERVER_NAME/
-</VirtualHost>
-EOL
-    fi
+    echo "Configuration for $SERVER_NAME has been saved to $CONFIG_FILE"
 }
 
 # Main logic for configuring server
@@ -243,19 +146,7 @@ function configure_server() {
     prompt_site_details
     prompt_additional_options
     create_ssl_certificate
-    server_specific_settings
-
-    if [[ "$SERVER_TYPE" == "nginx" ]]; then
-        create_nginx_base_config
-        add_nginx_https
-        add_nginx_redirection
-    elif [[ "$SERVER_TYPE" == "apache" ]]; then
-        create_apache_base_config
-        add_apache_https
-        add_apache_redirection
-    fi
-
-    echo "Configuration for $SERVER_NAME has been saved to $CONFIG_FILE"
+    create_configuration
 }
 
 # Start configuration process

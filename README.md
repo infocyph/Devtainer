@@ -16,3 +16,11 @@ docker exec -it certbot certbot renew --deploy-hook "docker exec -it nginx nginx
 docker exec -it certbot certbot renew --deploy-hook "docker exec -it apache apachectl graceful"
 
 
+### Recommended Max Upload Values Based on Use Cases:
+| Use Case                        | Recommended `client_max_body_size` |
+|----------------------------------|------------------------------------|
+| Simple Websites (No uploads)     | 1 MB - 2 MB (default)              |
+| Image Uploads / Small Files      | 5 MB - 10 MB                       |
+| Document Management / CMS        | 10 MB - 50 MB                      |
+| Video Uploads / Media Platforms  | 100 MB or more                     |
+| API Payloads                     | 1 MB - 10 MB                       |
