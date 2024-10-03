@@ -1,5 +1,29 @@
 #!/bin/bash
 
+# Function to validate domain name
+function validate_domain() {
+    local domain=$1
+    local regex="^([a-zA-Z0-9][-a-zA-Z0-9]{0,253}[a-zA-Z0-9]\.)+[a-zA-Z]{2,}$"
+
+    if [[ ! $domain =~ $regex ]]; then
+        echo "Invalid domain name: $domain"
+        return 1
+    fi
+    return 0
+}
+
+# Function to prompt for domain name and validate it
+function prompt_for_domain() {
+    while true; do
+        read -r -p "Enter the domain (e.g., example.com): " DOMAIN_NAME
+        if validate_domain "$DOMAIN_NAME"; then
+            break
+        else
+            echo "Please enter a valid domain name."
+        fi
+    done
+}
+
 # Function to prompt for server type
 function choose_server_type() {
     echo "Choose the server to configure:"
@@ -7,12 +31,8 @@ function choose_server_type() {
     options=("Nginx" "Apache")
     select server_type in "${options[@]}"; do
         case $server_type in
-            "Nginx")
-                SERVER_TYPE="nginx"
-                break
-                ;;
-            "Apache")
-                SERVER_TYPE="apache"
+            "Nginx"|"Apache")
+                SERVER_TYPE=$server_type
                 break
                 ;;
             *)
@@ -22,7 +42,47 @@ function choose_server_type() {
     done
 }
 
-# Function to validate user inputs (not empty)
+# Function to ask for HTTP or HTTPS or both
+function prompt_for_http_https() {
+    echo "Choose the type of protocol:"
+    PS3="Enter the number: "
+    options=("HTTP only" "HTTPS only" "Both HTTP and HTTPS")
+    select choice in "${options[@]}"; do
+        case $choice in
+            "HTTP only")
+                ENABLE_HTTPS="n"
+                ENABLE_REDIRECTION="n"
+                break
+                ;;
+            "HTTPS only")
+                ENABLE_HTTPS="y"
+                ENABLE_REDIRECTION="n"
+                break
+                ;;
+            "Both HTTP and HTTPS")
+                ENABLE_HTTPS="y"
+                read -r -p "Set up HTTP to HTTPS redirection (y/n)? " ENABLE_REDIRECTION
+                if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+                    KEEP_HTTP="n"
+                else
+                    KEEP_HTTP="y"
+                fi
+                break
+                ;;
+            *)
+                echo "Invalid option, please select again."
+                ;;
+        esac
+    done
+}
+
+# Function to ask for relative document root directory
+function prompt_for_doc_root() {
+    read -r -p "Enter the relative DocumentRoot (after /app; e.g. /site or /site/public): " DOC_ROOT
+    DOC_ROOT=$(validate_input "$DOC_ROOT" "DocumentRoot cannot be empty. Please enter a valid DocumentRoot:")
+}
+
+# Function to validate input (not empty)
 function validate_input() {
     local input="$1"
     local message="$2"
@@ -33,64 +93,10 @@ function validate_input() {
     echo "$input"
 }
 
-# Function to prompt for site details with a predefined PHP version selection
-function prompt_site_details() {
-    read -r -p "Enter the site ServerName (e.g., site1.local): " SERVER_NAME
-    SERVER_NAME=$(validate_input "$SERVER_NAME" "ServerName cannot be empty. Please enter a valid ServerName:")
-
-    read -r -p "Enter the DocumentRoot (e.g., /var/www/html/site1): " DOC_ROOT
-    DOC_ROOT=$(validate_input "$DOC_ROOT" "DocumentRoot cannot be empty. Please enter a valid DocumentRoot:")
-
+# Function to ask for client max body size
+function prompt_for_client_max_body_size() {
     read -r -p "Enter the maximum client body size (e.g., 12M): " CLIENT_MAX_BODY_SIZE
     CLIENT_MAX_BODY_SIZE=$(validate_input "$CLIENT_MAX_BODY_SIZE" "Client body size cannot be empty. Please enter a valid value (e.g., 12M):")
-
-    # Predefined PHP version selection
-    echo "Select the PHP version:"
-    PS3="Enter the number: "
-    options=("8.0" "8.1" "8.2" "8.3" "8.4")
-    select PHP_VERSION in "${options[@]}"; do
-        if [[ -n "$PHP_VERSION" ]]; then
-            echo "You have selected PHP version $PHP_VERSION."
-            break
-        else
-            echo "Invalid option, please select a valid PHP version."
-        fi
-    done
-
-    PHP_CONTAINER="php${PHP_VERSION//./}"  # Create container name dynamically
-    LOG_DIR="/var/log/$SERVER_NAME"
-    CONFIG_FILE="$SERVER_NAME.conf"  # Configuration file named by domain
-}
-
-# Function to prompt for additional configuration options (redirection, HTTPS)
-function prompt_additional_options() {
-    read -r -p "Enable HTTPS (y/n)? " ENABLE_HTTPS
-    if [[ "$ENABLE_HTTPS" != "y" && "$ENABLE_HTTPS" != "n" ]]; then
-        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
-        prompt_additional_options
-    fi
-
-    read -r -p "Set up HTTP to HTTPS redirection (y/n)? " ENABLE_REDIRECTION
-    if [[ "$ENABLE_REDIRECTION" != "y" && "$ENABLE_REDIRECTION" != "n" ]]; then
-        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
-        prompt_additional_options
-    fi
-
-    read -r -p "Set up domain redirection (e.g., www.domain.com to domain.com)? (y/n): " ENABLE_DOMAIN_REDIRECTION
-    if [[ "$ENABLE_DOMAIN_REDIRECTION" != "y" && "$ENABLE_DOMAIN_REDIRECTION" != "n" ]]; then
-        echo "Invalid option. Please enter 'y' for Yes or 'n' for No."
-        prompt_additional_options
-    fi
-}
-
-# Function to generate SSL certificate using mkcert
-function create_ssl_certificate() {
-    if [[ "$ENABLE_HTTPS" == "y" ]]; then
-        echo "Creating SSL certificates using mkcert..."
-        SSL_CERT_FILE="/etc/letsencrypt/live/$SERVER_NAME/fullchain.pem"
-        SSL_CERT_KEY_FILE="/etc/letsencrypt/live/$SERVER_NAME/privkey.pem"
-        SSL_CHAIN_FILE="/etc/letsencrypt/live/$SERVER_NAME/chain.pem"
-    fi
 }
 
 # Function to generate configuration from template
@@ -98,54 +104,50 @@ function generate_conf_from_template() {
     local template_file=$1
     local output_file=$2
 
-    # Replace placeholders in the template and create the new conf file
-    sed -e "s|{{SERVER_NAME}}|$SERVER_NAME|g" \
+    # Replace placeholders in the template and append to the new conf file
+    sed -e "s|{{SERVER_NAME}}|$DOMAIN_NAME|g" \
         -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
         -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
-        -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
-        -e "s|{{LOG_DIR}}|$LOG_DIR|g" \
-        -e "s|{{SSL_CERT_FILE}}|$SSL_CERT_FILE|g" \
-        -e "s|{{SSL_CERT_KEY_FILE}}|$SSL_CERT_KEY_FILE|g" \
-        -e "s|{{SSL_CHAIN_FILE}}|$SSL_CHAIN_FILE|g" \
         "$template_file" >> "$output_file"
 }
 
-# Function to create configuration based on user input
+# Main function to create the configuration based on user inputs
 function create_configuration() {
-    if [[ "$SERVER_TYPE" == "nginx" ]]; then
-        if [[ "$ENABLE_DOMAIN_REDIRECTION" == "y" ]]; then
-            generate_conf_from_template "domain.redirect.nginx.conf" "$CONFIG_FILE"
-        fi
+    CONFIG_FILE="${DOMAIN_NAME}.conf"
+
+    if [[ "$SERVER_TYPE" == "Nginx" ]]; then
         if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
             generate_conf_from_template "redirect.nginx.conf" "$CONFIG_FILE"
         fi
         if [[ "$ENABLE_HTTPS" == "y" ]]; then
             generate_conf_from_template "https.nginx.conf" "$CONFIG_FILE"
-        else
+        fi
+        if [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
             generate_conf_from_template "http.nginx.conf" "$CONFIG_FILE"
         fi
-    elif [[ "$SERVER_TYPE" == "apache" ]]; then
-        if [[ "$ENABLE_DOMAIN_REDIRECTION" == "y" ]]; then
-            generate_conf_from_template "domain.redirect.apache.conf" "$CONFIG_FILE"
-        fi
+    elif [[ "$SERVER_TYPE" == "Apache" ]]; then
         if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
             generate_conf_from_template "redirect.apache.conf" "$CONFIG_FILE"
         fi
         if [[ "$ENABLE_HTTPS" == "y" ]]; then
             generate_conf_from_template "https.apache.conf" "$CONFIG_FILE"
-        else
+        fi
+        if [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
             generate_conf_from_template "http.apache.conf" "$CONFIG_FILE"
         fi
     fi
-    echo "Configuration for $SERVER_NAME has been saved to $CONFIG_FILE"
+
+    echo "Configuration for $DOMAIN_NAME has been saved to $CONFIG_FILE"
 }
 
-# Main logic for configuring server
+# Start the script
 function configure_server() {
+    prompt_for_domain
     choose_server_type
-    prompt_site_details
-    prompt_additional_options
-    create_ssl_certificate
+    prompt_for_http_https
+    prompt_for_doc_root
+    prompt_for_client_max_body_size
+    setup_ssl_certificate
     create_configuration
 }
 
