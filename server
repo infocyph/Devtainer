@@ -3,29 +3,36 @@
 # Exit on error and treat unset variables as errors
 set -euo pipefail
 
+# Define colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No color
+
 # Display usage information
 usage() {
   cat <<EOF
-Usage:
+${CYAN}Usage:${NC}
 $0 {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?}
 or
 server {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?} (if you added the directory path in the System Environment Variables)
 
 Commands:
-  up               Start Docker services (foreground)
-  start, reload    Start or reload Docker services (background)
-  stop, down       Stop or shut down Docker services
-  reboot, restart  Restart Docker services
-  rebuild          Rebuild Docker images with no cache
-  core             Access the Core container as 'devuser'
-  tools            Access the SERVER_TOOLS container as 'devuser'
-  lzd              Launch LazyDocker in the SERVER_TOOLS container
-  help             Show this usage guide
+  ${YELLOW}up${NC}               Start Docker services (foreground)
+  ${YELLOW}start, reload${NC}    Start or reload Docker services (background)
+  ${YELLOW}stop, down${NC}       Stop or shut down Docker services
+  ${YELLOW}reboot, restart${NC}  Restart Docker services
+  ${YELLOW}rebuild${NC}          Rebuild Docker images with no cache
+  ${YELLOW}core${NC}             Access the Core container as 'devuser'
+  ${YELLOW}tools${NC}            Access the SERVER_TOOLS container as 'devuser'
+  ${YELLOW}lzd${NC}              Launch LazyDocker in the SERVER_TOOLS container
+  ${YELLOW}help${NC}             Show this usage guide
 EOF
 }
 
 if [ $# -eq 0 ]; then
-  echo "Error: No command provided."
+  echo -e "${RED}Error: No command provided.${NC}"
   usage
   exit 1
 fi
@@ -42,13 +49,13 @@ loadEnv() {
 reload_http_containers() {
   # Reload Nginx
   if [ "$(docker ps -q -f name=NGINX)" ]; then
-    echo "- Reloading Nginx container (NGINX)..."
+    echo -e "${GREEN}- Reloading Nginx container (NGINX)...${NC}"
     docker exec -it NGINX nginx -s reload
   fi
 
   # Gracefully reload Apache
   if [ "$(docker ps -q -f name=APACHE)" ]; then
-    echo "- Gracefully reloading Apache container (APACHE)..."
+    echo -e "${GREEN}- Gracefully reloading Apache container (APACHE)...${NC}"
     docker exec -it APACHE apachectl graceful
   fi
 }
@@ -58,7 +65,7 @@ check_required_commands() {
   local commands=("$@")
   for cmd in "${commands[@]}"; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      echo >&2 "- Error: '$cmd' is not installed! Aborting."
+      echo -e "${RED}- Error: '$cmd' is not installed! Aborting.${NC}"
       exit 1
     fi
   done
@@ -72,7 +79,7 @@ check_file_existence() {
     local full_path="${directory}${file}"
 
     if [ ! -f "$full_path" ]; then
-      echo "- Error: $full_path file is missing! Aborting."
+      echo -e "${RED}- Error: $full_path file is missing! Aborting.${NC}"
       exit 1
     fi
   done
@@ -88,11 +95,11 @@ update_env() {
     local existing="$(grep "${var_name}=" "$env_file" | cut -d '=' -f 2)"
     if [ -z "$existing" ]; then
       sed -i "s|${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-      echo "- Updated ${var_name} in $env_file."
+      echo -e "${GREEN}- Updated ${var_name} in $env_file.${NC}"
     fi
   else
     echo -e "\n${var_name}=${var_value}" >>"$env_file"
-    echo "- Added ${var_name} to $env_file."
+    echo -e "${GREEN}- Added ${var_name} to $env_file.${NC}"
   fi
 }
 
@@ -106,12 +113,12 @@ ensure_files_exist() {
     dir=$(dirname "$full_path")
 
     if [ ! -d "$dir" ]; then
-      echo "- Creating directory $dir."
+      echo -e "${YELLOW}- Creating directory $dir.${NC}"
       mkdir -p "$dir"
     fi
 
     if [ ! -f "$full_path" ]; then
-      echo "- Creating file $full_path."
+      echo -e "${YELLOW}- Creating file $full_path.${NC}"
       touch "$full_path"
     fi
   done
@@ -124,7 +131,7 @@ copy_files() {
   local exclude_pattern="${4:-}"
 
   if [ ! -d "$full_destination" ]; then
-    echo "- Creating directory $full_destination for copying files."
+    echo -e "${YELLOW}- Creating directory $full_destination for copying files.${NC}"
     mkdir -p "$full_destination"
   fi
 
@@ -201,7 +208,6 @@ ensure_files_exist \
   "/configuration/scheduler/supervisor-logrotate"
 update_env "/docker/.env" "WORKING_DIR" "$directory"
 copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
-#copy_files "/configuration/apache/" "/docker/conf/docker-files/apache/" "*.conf"
 
 # Handle the provided command
 case "$1" in
@@ -240,7 +246,7 @@ help)
   usage
   ;;
 *)
-  echo "Invalid command: $1"
+  echo -e "${RED}Invalid command: $1${NC}"
   usage
   exit 1
   ;;

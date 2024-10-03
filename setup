@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit on error and treat unset variables as errors
+set -euo pipefail
+
 # Define colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
