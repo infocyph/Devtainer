@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Define colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No color
+
+# Function to show step number on the same line
+function show_step() {
+    local current_step=$1
+    local total_steps=$2
+    echo -ne "${YELLOW}Step $current_step of $total_steps: ${NC}"
+}
+
+# Check required commands
+check_required_commands() {
+  local commands=("$@")
+  for cmd in "${commands[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo -e "${RED}- Error: '$cmd' is not installed! Aborting.${NC}"
+      exit 1
+    fi
+  done
+}

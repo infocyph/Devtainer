@@ -6,12 +6,11 @@ services:
       - nginx
     restart: always
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     environment:
       - TZ=${TZ:-Asia/Dhaka}
     volumes:
-#      - "${PROJECT_DIR:-./../application}:/app"
       - ./docker/logs/nginx:/var/log/nginx
       - ./configuration/nginx:/etc/nginx/conf.d
       - ./configuration/ssl:/etc/letsencrypt
@@ -21,7 +20,12 @@ services:
     networks:
       - frontend
       - cert
-    command: ["/bin/sh", "-c", "nginx -g 'daemon off;'"]
+    command: [ "/bin/sh", "-c", "nginx -g 'daemon off;'" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   apache:
     container_name: APACHE
@@ -36,10 +40,9 @@ services:
     environment:
       - TZ=${TZ:-Asia/Dhaka}
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "${APACHE_HTTP_PORT:-80}:80"
+      - "${APACHE_HTTPS_PORT:-443}:443"
     volumes:
-#      - "${PROJECT_DIR:-./../application}:/var/www/html"
       - ./configuration/ssl:/etc/letsencrypt
       - ./docker/logs/apache:/var/log/apache2
       - ./configuration/apache:/etc/apache2/sites-available
@@ -49,3 +52,8 @@ services:
     networks:
       - frontend
       - cert
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,6 +1,7 @@
 services:
+  # Single-Node Elasticsearch
   elasticsearch-server:
-    container_name: ELASTICSEARCH
+    container_name: ELASTICSEARCH_SINGLE_NODE
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
     profiles:
       - elasticsearch
@@ -9,25 +10,77 @@ services:
       - "${ELASTICSEARCH_PORT:-9200}:9200"
     environment:
       - TZ=${TZ:-Asia/Dhaka}
-      - discovery.type='single-node'
-      - xpack.security.enabled='false'
+      - "discovery.type=single-node"  # Single-node configuration
+      - "xpack.security.enabled=false"
+      - "cluster.name=single_node_cluster"
+      - "node.name=elasticsearch-node-single"
     volumes:
-      - ./docker/data/elasticsearch:/usr/share/elasticsearch/data
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
     networks:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Clustered Elasticsearch
+  elasticsearch-cluster:
+    container_name: ELASTICSEARCH_CLUSTER
+    image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch-cluster
+    restart: always
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - "discovery.type=cluster"  # Cluster discovery
+      - "discovery.seed_hosts=elasticsearch-cluster"
+      - "cluster.initial_master_nodes=elasticsearch-cluster"
+      - "cluster.routing.allocation.awareness.attributes=rack_id"
+      - "node.attr.rack_id=rack_one"
+      - "cluster.name=my_elasticsearch_cluster"
+      - "node.name=elasticsearch-node-1"
+      - "ELASTICSEARCH_NUMBER_OF_SHARDS=${ELASTICSEARCH_NUMBER_OF_SHARDS:-3}"   # 3 shards
+      - "ELASTICSEARCH_NUMBER_OF_REPLICAS=${ELASTICSEARCH_NUMBER_OF_REPLICAS:-2}" # 2 replicas
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+    deploy:
+      replicas: 3  # Replicate this service in cluster mode
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kibana Client
   elasticsearch-client:
     container_name: KIBANA
     image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
-    profiles:
-      - elasticsearch
     restart: always
     ports:
       - "${KIBANA_PORT:-5601}:5601"
     environment:
       - TZ=${TZ:-Asia/Dhaka}
-      - ELASTICSEARCH_HOSTS='["http://elasticsearch-server:${ELASTICSEARCH_PORT:-9200}"]'
     depends_on:
       - elasticsearch-server
+    volumes:
+      - ./data/kibana:/usr/share/kibana/data
     networks:
       - frontend
       - backend
+    profiles:
+      elasticsearch-cluster:
+        environment:
+          - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster:9200"
+      elasticsearch:
+        environment:
+          - "ELASTICSEARCH_HOSTS=http://elasticsearch-server:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

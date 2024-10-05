@@ -1,4 +1,5 @@
 services:
+  # Redis Single Instance
   redis-server:
     container_name: REDIS
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
@@ -8,26 +9,82 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - ./docker/data/redis:/data
+      - redis-data:/data
     environment:
       - TZ=${TZ:-Asia/Dhaka}
-      - REDIS_ARGS = "--save 10 1 --appendonly yes"
+      - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Master (Primary)
+  redis-master:
+    container_name: REDIS_MASTER
+    image: redis/redis-stack-server:${REDIS_VERSION:-latest}
+    profiles:
+      - redis-replication
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-master-data:/data
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_ARGS="--save 10 1 --appendonly yes"
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Replica (Slave)
+  redis-replica:
+    container_name: REDIS_REPLICA
+    image: redis/redis-stack-server:${REDIS_VERSION:-latest}
+    profiles:
+      - redis-replication
+    restart: always
+    depends_on:
+      - redis-master
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_ARGS="--save 10 1 --appendonly yes"
+    command: [ "sh", "-c", "redis-server --replicaof redis-master 6379" ]
+    volumes:
+      - redis-replica-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-h", "redis-master", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # RedisInsight Client
   redis-client:
     container_name: REDIS_INSIGHT
     image: redis/redisinsight:latest
-    profiles:
-      - redis
     restart: always
     environment:
       - TZ=${TZ:-Asia/Dhaka}
     ports:
       - "${RI_PORT:-5540}:5540"
     volumes:
-      - ./docker/data/redis-insight:/data
-    depends_on:
-      - redis-server
+      - redis-insight-data:/data
     networks:
       - frontend
       - backend
+    profiles:
+      redis:
+        environment:
+          - REDIS_INSIGHT_REDIS_HOST=redis-server
+      redis-replication:
+        environment:
+          - REDIS_INSIGHT_REDIS_HOST=redis-master
+

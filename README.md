@@ -4,7 +4,7 @@ Docker based local development environment for PHP based projects
 docker-compose run certbot certonly --webroot --webroot-path=/var/www/certbot -d example.com -d www.example.com
 
 
-docker exec -it certbot certbot certonly --webroot \
+docker exec -it CERTIFICATE_BOT certbot certonly --webroot \
 --webroot-path=/var/www/certbot \
 --email your-email@example.com \
 --agree-tos \
@@ -12,9 +12,10 @@ docker exec -it certbot certbot certonly --webroot \
 -d example.com \
 -d www.example.com
 
-docker exec -it certbot certbot renew --deploy-hook "docker exec -it nginx nginx -s reload"
-docker exec -it certbot certbot renew --deploy-hook "docker exec -it apache apachectl graceful"
+docker exec -it CERTIFICATE_BOT certbot renew --deploy-hook "docker exec -it nginx nginx -s reload"
+docker exec -it CERTIFICATE_BOT certbot renew --deploy-hook "docker exec -it apache apachectl graceful"
 
+user: "${UID}:${GID}"  # Add this line to run as the current user
 
 ### Recommended Max Upload Values Based on Use Cases:
 | Use Case                        | Recommended `client_max_body_size` |

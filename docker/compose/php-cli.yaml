@@ -1,161 +1,97 @@
+x-php-cli-service: &php-cli-service
+  build:
+    context: docker/conf/docker-files
+    dockerfile: cli.Dockerfile
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-root}
+      PHP_EXT: ${PHP_EXT:-}
+      LINUX_PKG: ${LINUX_PKG:-}
+      WORKING_DIR: ${WORKING_DIR}
+  restart: always
+  environment:
+    - TZ=${TZ:-Asia/Dhaka}
+  env_file:
+    - "./.env"
+  volumes:
+    - "${PROJECT_DIR:-./../application}:/app"
+    - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+    - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+    - ./configuration/ssh:/home/devuser/.ssh
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - backend
+
 services:
+  php74cli:
+    <<: *php-cli-service
+    container_name: PHP_7.4_CLI
+    build:
+      args:
+        PHP_VERSION: 7.4
+        PHP_EXT_VERSIONED: ${PHP_EXT_74:-}
+        LINUX_PKG_VERSIONED: ${LINUX_PKG_74:-}
+    profiles:
+      - php-cli
+      - php74-cli
   php80cli:
+    <<: *php-cli-service
     container_name: PHP_8.0_CLI
     build:
-      context: docker/conf/docker-files
-      dockerfile: cli.Dockerfile
       args:
         PHP_VERSION: 8.0
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        PHP_EXT: ${PHP_EXT:-}
-        LINUX_PKG: ${LINUX_PKG:-}
         PHP_EXT_VERSIONED: ${PHP_EXT_80:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_80:-}
-        WORKING_DIR: ${WORKING_DIR}
     profiles:
       - php-cli
       - php80-cli
-    restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
-    env_file:
-      - "./.env"
-    volumes:
-      - "${PROJECT_DIR:-./../application}:/app"
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-      - ./configuration/ssh:/home/devuser/.ssh
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend
+
   php81cli:
+    <<: *php-cli-service
     container_name: PHP_8.1_CLI
     build:
-      context: docker/conf/docker-files
-      dockerfile: cli.Dockerfile
       args:
         PHP_VERSION: 8.1
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        PHP_EXT: ${PHP_EXT:-}
-        LINUX_PKG: ${LINUX_PKG:-}
         PHP_EXT_VERSIONED: ${PHP_EXT_81:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_81:-}
-        WORKING_DIR: ${WORKING_DIR}
     profiles:
       - php-cli
       - php81-cli
-    restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
-    env_file:
-      - "./.env"
-    volumes:
-      - "${PROJECT_DIR:-./../application}:/app"
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-      - ./configuration/ssh:/home/devuser/.ssh
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend
+
   php82cli:
+    <<: *php-cli-service
     container_name: PHP_8.2_CLI
     build:
-      context: docker/conf/docker-files
-      dockerfile: cli.Dockerfile
       args:
         PHP_VERSION: 8.2
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        PHP_EXT: ${PHP_EXT:-}
-        LINUX_PKG: ${LINUX_PKG:-}
         PHP_EXT_VERSIONED: ${PHP_EXT_82:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_82:-}
-        WORKING_DIR: ${WORKING_DIR}
     profiles:
       - php-cli
       - php82-cli
-    restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
-    env_file:
-      - "./.env"
-    volumes:
-      - "${PROJECT_DIR:-./../application}:/app"
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-      - ./configuration/ssh:/home/devuser/.ssh
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend
+
   php83cli:
+    <<: *php-cli-service
     container_name: PHP_8.3_CLI
     build:
-      context: docker/conf/docker-files
-      dockerfile: cli.Dockerfile
       args:
         PHP_VERSION: 8.3
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        PHP_EXT: ${PHP_EXT:-}
-        LINUX_PKG: ${LINUX_PKG:-}
         PHP_EXT_VERSIONED: ${PHP_EXT_83:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_83:-}
-        WORKING_DIR: ${WORKING_DIR}
     profiles:
       - php-cli
       - php83-cli
-    restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
-    env_file:
-      - "./.env"
-    volumes:
-      - "${PROJECT_DIR:-./../application}:/app"
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-      - ./configuration/ssh:/home/devuser/.ssh
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend
+
   php84cli:
+    <<: *php-cli-service
     container_name: PHP_8.4_CLI
     build:
-      context: docker/conf/docker-files
-      dockerfile: cli.Dockerfile
       args:
         PHP_VERSION: 8.4
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        PHP_EXT: ${PHP_EXT:-}
-        LINUX_PKG: ${LINUX_PKG:-}
         PHP_EXT_VERSIONED: ${PHP_EXT_84:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_84:-}
-        WORKING_DIR: ${WORKING_DIR}
     profiles:
       - php-cli
       - php84-cli
-    restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
-    env_file:
-      - "./.env"
-    volumes:
-      - "${PROJECT_DIR:-./../application}:/app"
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-      - ./configuration/ssh:/home/devuser/.ssh
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend
