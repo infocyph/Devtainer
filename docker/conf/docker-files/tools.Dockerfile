@@ -2,7 +2,11 @@ FROM debian:latest
 
 RUN apt update && apt upgrade -y && \
     apt install -y --no-install-recommends \
-    curl git wget net-tools yq
+    curl git wget net-tools ca-certificates
+
+# yq
+wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq &&\
+    chmod +x /usr/local/bin/yq
 
 # mkcert
 RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
