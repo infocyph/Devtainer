@@ -19,7 +19,7 @@ services:
       - ./logs/mysql:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.0  # Static IP for MySQL Single Instance
+        ipv4_address: 172.23.4.1  # Static IP for MySQL Single Instance
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -46,7 +46,7 @@ services:
       - ./logs/mariadb:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.1  # Static IP for MariaDB Single Instance
+        ipv4_address: 172.23.4.2  # Static IP for MariaDB Single Instance
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -75,7 +75,7 @@ services:
       - ./logs/mysql:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.2  # Static IP for MySQL Master
+        ipv4_address: 172.23.4.3  # Static IP for MySQL Master
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -105,7 +105,7 @@ services:
       - ./logs/mysql:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.3  # Static IP for MySQL Slave
+        ipv4_address: 172.23.4.4  # Static IP for MySQL Slave
     depends_on:
       - mysql-master
     healthcheck:
@@ -145,7 +145,7 @@ services:
       - ./logs/mariadb:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.4  # Static IP for MariaDB Master
+        ipv4_address: 172.23.4.5  # Static IP for MariaDB Master
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -175,7 +175,7 @@ services:
       - ./logs/mariadb:/var/log/mysql
     networks:
       backend:
-        ipv4_address: 172.23.4.5  # Static IP for MariaDB Slave
+        ipv4_address: 172.23.4.6  # Static IP for MariaDB Slave
     depends_on:
       - mariadb-master
     healthcheck:
@@ -212,9 +212,9 @@ services:
       - ./data/phpmyadmin:/etc/phpmyadmin/conf.d:ro
     networks:
       frontend:
-        ipv4_address: 172.22.4.0  # Static IP for phpMyAdmin on Frontend network
+        ipv4_address: 172.22.4.1  # Static IP for phpMyAdmin on Frontend network
       backend:
-        ipv4_address: 172.23.4.6  # Static IP for phpMyAdmin on Backend network
+        ipv4_address: 172.23.4.7  # Static IP for phpMyAdmin on Backend network
     profiles:
       mysql:
         PMA_HOST: mysql-single

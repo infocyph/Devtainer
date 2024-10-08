@@ -21,9 +21,6 @@ x-php-cli-service: &php-cli-service
     - ./configuration/ssh:/home/devuser/.ssh
   extra_hosts:
     - "host.docker.internal:host-gateway"
-  networks:
-    backend:
-      ipv4_address: 172.23.5.0  # Default IP range for backend network
 
 services:
   php74cli:

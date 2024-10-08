@@ -19,9 +19,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       frontend:
-        ipv4_address: 172.22.2.0  # Static IP for Nginx on Frontend
+        ipv4_address: 172.22.2.1  # Static IP for Nginx on Frontend
       cert:
-        ipv4_address: 172.21.2.0  # Static IP for Nginx on Cert Network
+        ipv4_address: 172.21.2.1  # Static IP for Nginx on Cert Network
     command: [ "/bin/sh", "-c", "nginx -g 'daemon off;'" ]
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
@@ -53,9 +53,9 @@ services:
       - 'host.docker.internal:host-gateway'
     networks:
       frontend:
-        ipv4_address: 172.22.2.1  # Static IP for Apache on Frontend
+        ipv4_address: 172.22.2.2  # Static IP for Apache on Frontend
       cert:
-        ipv4_address: 172.21.2.1  # Static IP for Apache on Cert Network
+        ipv4_address: 172.21.2.2  # Static IP for Apache on Cert Network
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
       interval: 30s

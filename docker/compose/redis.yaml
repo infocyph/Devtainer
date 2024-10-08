@@ -15,7 +15,7 @@ services:
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
       backend:
-        ipv4_address: 172.23.8.0  # Static IP for Redis Single Instance
+        ipv4_address: 172.23.8.1  # Static IP for Redis Single Instance
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
@@ -38,7 +38,7 @@ services:
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
       backend:
-        ipv4_address: 172.23.8.1  # Static IP for Redis Master
+        ipv4_address: 172.23.8.2  # Static IP for Redis Master
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
@@ -62,7 +62,7 @@ services:
       - ./data/redis-replica:/data
     networks:
       backend:
-        ipv4_address: 172.23.8.2  # Static IP for Redis Replica
+        ipv4_address: 172.23.8.3  # Static IP for Redis Replica
     healthcheck:
       test: [ "CMD", "redis-cli", "-h", "redis-master", "ping" ]
       interval: 30s
@@ -82,9 +82,9 @@ services:
       - ./data/redis-insight:/data
     networks:
       frontend:
-        ipv4_address: 172.22.8.0  # Static IP for RedisInsight on Frontend
+        ipv4_address: 172.22.8.1  # Static IP for RedisInsight on Frontend
       backend:
-        ipv4_address: 172.23.8.3  # Static IP for RedisInsight on Backend
+        ipv4_address: 172.23.8.4  # Static IP for RedisInsight on Backend
     profiles:
       redis:
         environment:

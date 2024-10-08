@@ -22,11 +22,6 @@ x-php-service: &php-service
     - ./configuration/ssh:/home/devuser/.ssh
   extra_hosts:
     - "host.docker.internal:host-gateway"
-  networks:
-    frontend:
-      ipv4_address: 172.22.6.0  # Default IP for frontend network
-    backend:
-      ipv4_address: 172.23.6.0  # Default IP for backend network
   healthcheck:
     test: ["CMD-SHELL", "php-fpm -t || exit 1"]
     interval: 30s
