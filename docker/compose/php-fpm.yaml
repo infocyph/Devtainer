@@ -23,10 +23,12 @@ x-php-service: &php-service
   extra_hosts:
     - "host.docker.internal:host-gateway"
   networks:
-    - frontend
-    - backend
+    frontend:
+      ipv4_address: 172.22.6.0  # Default IP for frontend network
+    backend:
+      ipv4_address: 172.23.6.0  # Default IP for backend network
   healthcheck:
-    test: [ "CMD-SHELL", "php-fpm -t || exit 1" ]
+    test: ["CMD-SHELL", "php-fpm -t || exit 1"]
     interval: 30s
     timeout: 10s
     retries: 3
@@ -41,6 +43,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_74:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_74:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_74:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.1  # Static IP for PHP 7.4 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.1  # Static IP for PHP 7.4 (Backend)
     profiles:
       - php
       - php74
@@ -54,6 +61,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_80:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_80:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_80:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.2  # Static IP for PHP 8.0 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.2  # Static IP for PHP 8.0 (Backend)
     profiles:
       - php
       - php80
@@ -67,6 +79,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_81:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_81:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_81:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.3  # Static IP for PHP 8.1 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.3  # Static IP for PHP 8.1 (Backend)
     profiles:
       - php
       - php81
@@ -80,6 +97,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_82:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_82:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_82:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.4  # Static IP for PHP 8.2 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.4  # Static IP for PHP 8.2 (Backend)
     profiles:
       - php
       - php82
@@ -93,6 +115,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_83:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_83:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_83:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.5  # Static IP for PHP 8.3 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.5  # Static IP for PHP 8.3 (Backend)
     profiles:
       - php
       - php83
@@ -106,6 +133,11 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_84:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_84:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_84:-}
+    networks:
+      frontend:
+        ipv4_address: 172.22.6.6  # Static IP for PHP 8.4 (Frontend)
+      backend:
+        ipv4_address: 172.23.6.6  # Static IP for PHP 8.4 (Backend)
     profiles:
       - php
       - php84

@@ -17,39 +17,64 @@ services:
     volumes:
       - ./data/elasticsearch:/usr/share/elasticsearch/data
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.1.0  # Static IP for single-node Elasticsearch
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Clustered Elasticsearch
-  elasticsearch-cluster:
-    container_name: ELASTICSEARCH_CLUSTER
+  # Clustered Elasticsearch Node 1
+  elasticsearch-cluster-node1:
+    container_name: ELASTICSEARCH_CLUSTER_NODE1
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
     profiles:
       - elasticsearch-cluster
     restart: always
-    ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
     environment:
       - TZ=${TZ:-Asia/Dhaka}
-      - "discovery.type=cluster"  # Cluster discovery
-      - "discovery.seed_hosts=elasticsearch-cluster"
-      - "cluster.initial_master_nodes=elasticsearch-cluster"
+      - "discovery.seed_hosts=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
+      - "cluster.initial_master_nodes=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
       - "cluster.routing.allocation.awareness.attributes=rack_id"
       - "node.attr.rack_id=rack_one"
       - "cluster.name=my_elasticsearch_cluster"
       - "node.name=elasticsearch-node-1"
-      - "ELASTICSEARCH_NUMBER_OF_SHARDS=${ELASTICSEARCH_NUMBER_OF_SHARDS:-3}"   # 3 shards
-      - "ELASTICSEARCH_NUMBER_OF_REPLICAS=${ELASTICSEARCH_NUMBER_OF_REPLICAS:-2}" # 2 replicas
+      - "ELASTICSEARCH_NUMBER_OF_SHARDS=${ELASTICSEARCH_NUMBER_OF_SHARDS:-3}"
+      - "ELASTICSEARCH_NUMBER_OF_REPLICAS=${ELASTICSEARCH_NUMBER_OF_REPLICAS:-1}"
     volumes:
-      - ./data/elasticsearch:/usr/share/elasticsearch/data
-    deploy:
-      replicas: 3  # Replicate this service in cluster mode
+      - ./data/elasticsearch-node1:/usr/share/elasticsearch/data
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.1.1  # Static IP for Elasticsearch Cluster Node 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Clustered Elasticsearch Node 2
+  elasticsearch-cluster-node2:
+    container_name: ELASTICSEARCH_CLUSTER_NODE2
+    image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
+    profiles:
+      - elasticsearch-cluster
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - "discovery.seed_hosts=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
+      - "cluster.initial_master_nodes=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
+      - "cluster.routing.allocation.awareness.attributes=rack_id"
+      - "node.attr.rack_id=rack_two"
+      - "cluster.name=my_elasticsearch_cluster"
+      - "node.name=elasticsearch-node-2"
+      - "ELASTICSEARCH_NUMBER_OF_SHARDS=${ELASTICSEARCH_NUMBER_OF_SHARDS:-3}"
+      - "ELASTICSEARCH_NUMBER_OF_REPLICAS=${ELASTICSEARCH_NUMBER_OF_REPLICAS:-1}"
+    volumes:
+      - ./data/elasticsearch-node2:/usr/share/elasticsearch/data
+    networks:
+      backend:
+        ipv4_address: 172.23.1.2  # Static IP for Elasticsearch Cluster Node 2
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
@@ -66,16 +91,18 @@ services:
     environment:
       - TZ=${TZ:-Asia/Dhaka}
     depends_on:
-      - elasticsearch-server
+      - elasticsearch-cluster-node1
     volumes:
       - ./data/kibana:/usr/share/kibana/data
     networks:
-      - frontend
-      - backend
+      frontend:
+        ipv4_address: 172.22.1.0  # Static IP for Kibana on Frontend
+      backend:
+        ipv4_address: 172.23.1.3  # Static IP for Kibana on Backend
     profiles:
       elasticsearch-cluster:
         environment:
-          - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster:9200"
+          - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster-node1:9200"
       elasticsearch:
         environment:
           - "ELASTICSEARCH_HOSTS=http://elasticsearch-server:9200"

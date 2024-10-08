@@ -10,33 +10,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: [ "/bin/bash", "/usr/local/bin/certbot-renew" ]
     networks:
-      - cert
-  #  app:
-  #    image: 'jc21/nginx-proxy-manager:latest'
-  #    restart: unless-stopped
-  #    ports:
-  #      - '80:80'
-  #      - '81:81'
-  #      - '443:443'
-  #    environment:
-  #      - DB_SQLITE_FILE=/data/database.sqlite
-  #      - DISABLE_IPV6=true
-  #      - PUID=1000
-  #      - PGID=1000
-  #      - X_FRAME_OPTIONS=sameorigin
-  #    volumes:
-  #      - "${PROJECT_DIR:-./../application}:/application"
-  #      - ./docker/data/proxy:/data
-  #      - ./docker/data/letsencrypt:/etc/letsencrypt
-  #    networks:
-  #      - frontend
+      cert:
+        ipv4_address: 172.21.0.1  # Static IP for Certbot
+
   server-tools:
     container_name: SERVER_TOOLS
     build:
       context: docker/conf/docker-files
       dockerfile: tools.Dockerfile
-      args:
-        UID: ${UID:-1000}
+    args:
+      UID: ${UID:-1000}
     profiles:
       - tools
     restart: always
@@ -48,4 +31,5 @@ services:
       - "${PROJECT_DIR:-./../application}:/app"
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - devtainer-net
+      backend:
+        ipv4_address: 172.23.0.1  # Static IP for Server Tools

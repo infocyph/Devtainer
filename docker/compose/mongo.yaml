@@ -15,7 +15,8 @@ services:
     volumes:
       - ./data/mongo:/data/db
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.3.0  # Static IP for MongoDB Single Node
     healthcheck:
       test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
       interval: 30s
@@ -41,7 +42,8 @@ services:
       - ./docker/conf/docker-files/scripts/mongo-replica:/scripts/init-replica.sh
     command: "--replSet rs0"
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.3.1  # Static IP for MongoDB Primary
     healthcheck:
       test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
       interval: 30s
@@ -67,7 +69,8 @@ services:
     depends_on:
       - mongo-primary
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.3.2  # Static IP for MongoDB Secondary 1
 
   # MongoDB Secondary 2
   mongo-secondary2:
@@ -87,7 +90,8 @@ services:
     depends_on:
       - mongo-primary
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.3.3  # Static IP for MongoDB Secondary 2
 
   # Mongo Express Client
   mongo-client:
@@ -103,8 +107,10 @@ services:
       - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
       - TZ=${TZ:-Asia/Dhaka}
     networks:
-      - frontend
-      - backend
+      frontend:
+        ipv4_address: 172.22.3.0  # Static IP for Mongo Express
+      backend:
+        ipv4_address: 172.23.3.4  # Static IP for Mongo Express on Backend
     profiles:
       mongodb:
         environment:

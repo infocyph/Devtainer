@@ -16,7 +16,8 @@ services:
     volumes:
       - ./data/postgresql:/var/lib/postgresql/data
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.7.0  # Static IP for PostgreSQL Single Instance
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 30s
@@ -41,7 +42,8 @@ services:
       - ./data/postgresql-master:/var/lib/postgresql/data
       - ./configuration/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf  # Custom config for replication
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.7.1  # Static IP for PostgreSQL Master
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
@@ -65,7 +67,8 @@ services:
     volumes:
       - ./data/postgresql-replica:/var/lib/postgresql/data
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.23.7.2  # Static IP for PostgreSQL Replica
     depends_on:
       - postgres-master
     command: ["sh", "-c", "
@@ -92,8 +95,10 @@ services:
     volumes:
       - ./data/pgadmin:/var/lib/pgadmin
     networks:
-      - frontend
-      - backend
+      frontend:
+        ipv4_address: 172.22.7.0  # Static IP for pgAdmin on Frontend
+      backend:
+        ipv4_address: 172.23.7.3  # Static IP for pgAdmin on Backend
     profiles:
       postgresql:
         environment:
