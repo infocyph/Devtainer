@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Array of file paths
+files=(
+  "./docker/compose/elasticsearch.yaml"
+  "./docker/compose/mongo.yaml"
+  "./docker/compose/mysql.yaml"
+  "./docker/compose/psql.yaml"
+  "./docker/compose/redis.yaml"
+  "./docker/compose/companion.yaml"
+)
+
+# Function to process each file
+extract_variables() {
+  local file=$1
+  echo "Processing $file..."
+
+  # Extract services and their associated profiles using yq
+  services=$(yq '.services | keys' "$file" -r)
+
+  # Loop through each service and extract profile names and environment variables
+  for service in $services; do
+    profiles=$(yq ".services.${service}.profiles[]" "$file" -r 2>/dev/null)
+
+    if [[ -n "$profiles" ]]; then
+      for profile in $profiles; do
+        echo -e "\n\033[1;34mProfile: $profile\033[0m"
+
+        # Extract only environment variables under the 'environment' key
+        env_vars=$(yq ".services.${service}.environment[]" "$file" -r 2>/dev/null)
+
+        # Loop through environment variables and extract those with default values
+        for var in $env_vars; do
+          # Match format: ${VAR_NAME:-default_value} (whole value to replace)
+          if [[ $var =~ \${([A-Z_]+):-([^}]+)}$ ]]; then
+            var_name="${BASH_REMATCH[1]}"
+            default_value="${BASH_REMATCH[2]}"
+            echo "$var_name|$default_value"
+
+          # Match the image line with default value
+          elif [[ $var =~ ([A-Z_]+):\s+\${([A-Z_]+):-([^}]+)} ]]; then
+            var_name="${BASH_REMATCH[2]}"
+            default_value="${BASH_REMATCH[3]}"
+            echo "$var_name|$default_value"
+
+          # Skip predefined strings (like --save or URL)
+          elif [[ $var =~ [a-zA-Z_]+=([^\$]*) ]]; then
+            continue
+          fi
+        done
+
+        # Check for image variables
+        image_var=$(yq ".services.${service}.image" "$file" -r 2>/dev/null)
+        if [[ $image_var =~ \${([A-Z_]+):-([^}]+)} ]]; then
+          var_name="${BASH_REMATCH[1]}"
+          default_value="${BASH_REMATCH[2]}"
+          echo "$var_name|$default_value"
+        fi
+      done
+    fi
+  done
+}
+
+# Loop through each file and extract variables
+for file in "${files[@]}"; do
+  if [[ -f $file ]]; then
+    extract_variables "$file"
+  else
+    echo -e "\033[0;31mFile not found: $file\033[0m"
+  fi
+done
