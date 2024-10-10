@@ -20,7 +20,7 @@ services:
       backend:
         ipv4_address: 172.23.1.1  # Static IP for single-node Elasticsearch
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -48,7 +48,7 @@ services:
       backend:
         ipv4_address: 172.23.1.2  # Static IP for Elasticsearch Cluster Node 1
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -76,7 +76,7 @@ services:
       backend:
         ipv4_address: 172.23.1.3  # Static IP for Elasticsearch Cluster Node 2
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -90,24 +90,47 @@ services:
       - "${KIBANA_PORT:-5601}:5601"
     environment:
       - TZ=${TZ:-Asia/Dhaka}
+      - "ELASTICSEARCH_HOSTS=http://elasticsearch-server:9200"
     depends_on:
-      - elasticsearch-cluster-node1
+      - elasticsearch-server
     volumes:
-      - ./data/kibana:/usr/share/kibana/data
+      - ./data/kibana-client:/usr/share/kibana/data
     networks:
       frontend:
         ipv4_address: 172.22.1.1  # Static IP for Kibana on Frontend
       backend:
-        ipv4_address: 172.23.1.4  # Static IP for Kibana on Backend
+        ipv4_address: 172.23.1.100  # Static IP for Kibana on Backend
     profiles:
-      elasticsearch-cluster:
-        environment:
-          - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster-node1:9200"
-      elasticsearch:
-        environment:
-          - "ELASTICSEARCH_HOSTS=http://elasticsearch-server:9200"
+      - kibana
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kibana Client
+  elasticsearch-cluster-client:
+    container_name: KIBANA_CLUSTER
+    image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
+    restart: always
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster-node1:9200"
+    depends_on:
+      - elasticsearch-cluster-node1
+    volumes:
+      - ./data/kibana-cluster:/usr/share/kibana/data
+    networks:
+      frontend:
+        ipv4_address: 172.22.1.2  # Static IP for Kibana on Frontend
+      backend:
+        ipv4_address: 172.23.1.101  # Static IP for Kibana on Backend
+    profiles:
+      - kibana-cluster
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3

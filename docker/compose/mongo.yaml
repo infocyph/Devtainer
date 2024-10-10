@@ -100,21 +100,41 @@ services:
     restart: always
     ports:
       - "${ME_PORT:-8081}:8081"
+    depends_on:
+      - mongo-client
     environment:
       - ME_CONFIG_BASICAUTH_USERNAME=${ME_BA_USERNAME:-root}
       - ME_CONFIG_BASICAUTH_PASSWORD=${ME_BA_PASSWORD:-12345}
       - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGODB_ROOT_USERNAME:-root}
       - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
       - TZ=${TZ:-Asia/Dhaka}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-server:${MONGODB_PORT:-27017}/
     networks:
       frontend:
         ipv4_address: 172.22.3.1  # Static IP for Mongo Express
       backend:
-        ipv4_address: 172.23.3.5  # Static IP for Mongo Express on Backend
+        ipv4_address: 172.23.3.100  # Static IP for Mongo Express on Backend
     profiles:
-      mongodb:
-        environment:
-          - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-server:${MONGODB_PORT:-27017}/
-      mongodb-replica:
-        environment:
-          - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-primary:${MONGODB_PORT:-27017}/?replicaSet=rs0
+      - mongodb
+
+  # Mongo Express Client
+  mongo-replica-client:
+    container_name: MONGO_REPLICA_ADMIN
+    image: mongo-express:${ME_VERSION:-latest}
+    restart: always
+    ports:
+      - "${ME_PORT:-8081}:8081"
+    environment:
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_BA_USERNAME:-root}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_BA_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - TZ=${TZ:-Asia/Dhaka}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-primary:${MONGODB_PORT:-27017}/?replicaSet=rs0
+    networks:
+      frontend:
+        ipv4_address: 172.22.3.2  # Static IP for Mongo Express
+      backend:
+        ipv4_address: 172.23.3.101  # Static IP for Mongo Express on Backend
+    profiles:
+      - mongo-replica-client

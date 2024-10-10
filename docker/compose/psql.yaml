@@ -19,7 +19,7 @@ services:
       backend:
         ipv4_address: 172.23.7.1  # Static IP for PostgreSQL Single Instance
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -44,9 +44,9 @@ services:
     networks:
       backend:
         ipv4_address: 172.23.7.2  # Static IP for PostgreSQL Master
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -71,12 +71,12 @@ services:
         ipv4_address: 172.23.7.3  # Static IP for PostgreSQL Replica
     depends_on:
       - postgres-master
-    command: ["sh", "-c", "
+    command: [ "sh", "-c", "
       pg_basebackup -h ${REPLICATE_FROM} -D /var/lib/postgresql/data -U ${POSTGRES_USER} -v -P -R --wal-method=stream &&
       postgres
-    "]
+    " ]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -92,17 +92,35 @@ services:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
       - TZ=${TZ:-Asia/Dhaka}
+      - PGADMIN_HOST=postgres-server
     volumes:
       - ./data/pgadmin:/var/lib/pgadmin
     networks:
       frontend:
         ipv4_address: 172.22.7.1  # Static IP for pgAdmin on Frontend
       backend:
-        ipv4_address: 172.23.7.4  # Static IP for pgAdmin on Backend
+        ipv4_address: 172.23.7.100  # Static IP for pgAdmin on Backend
     profiles:
-      postgresql:
-        environment:
-          - PGADMIN_HOST=postgres-server
-      postgresql-replication:
-        environment:
-          - PGADMIN_HOST=postgres-master
+      - postgresql-client
+
+  # pgAdmin Client
+  postgres-replication-client:
+    container_name: PG_REPLICATION_ADMIN
+    image: dpage/pgadmin4:latest
+    restart: always
+    ports:
+      - "${PGADMIN_PORT:-5400}:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
+      - TZ=${TZ:-Asia/Dhaka}
+      - PGADMIN_HOST=postgres-master
+    volumes:
+      - ./data/pgadmin-replication:/var/lib/pgadmin
+    networks:
+      frontend:
+        ipv4_address: 172.22.7.2  # Static IP for pgAdmin on Frontend
+      backend:
+        ipv4_address: 172.23.7.101  # Static IP for pgAdmin on Backend
+    profiles:
+      - postgresql-replication-client

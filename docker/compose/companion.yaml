@@ -30,6 +30,8 @@ services:
       - ./configuration/ssh:/home/devuser/.ssh
       - "${PROJECT_DIR:-./../application}:/app"
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/compose:/mount/compose
+      - ./docker/asset:/mount/asset
     networks:
       backend:
         ipv4_address: 172.23.0.1  # Static IP for Server Tools

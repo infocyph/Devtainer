@@ -26,33 +26,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # MariaDB Single Instance
-  mariadb-single:
-    container_name: MARIADB_SINGLE
-    image: mariadb:${MARIADB_VERSION:-latest}
-    profiles:
-      - mariadb
-    restart: always
-    ports:
-      - "${MARIADB_PORT:-3306}:3306"
-    environment:
-      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
-      - MARIADB_USER=${MARIADB_USER:-devuser}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
-      - TZ=${TZ:-Asia/Dhaka}
-    volumes:
-      - ./data/mariadb:/var/lib/mysql
-      - ./logs/mariadb:/var/log/mysql
-    networks:
-      backend:
-        ipv4_address: 172.23.4.2  # Static IP for MariaDB Single Instance
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # MySQL Master (Primary)
   mysql-master:
     container_name: MYSQL_MASTER
@@ -123,104 +96,56 @@ services:
       \"
     "]
 
-  # MariaDB Master (Primary)
-  mariadb-master:
-    container_name: MARIADB_MASTER
-    image: mariadb:${MARIADB_VERSION:-latest}
-    profiles:
-      - mariadb-replication
-    restart: always
-    ports:
-      - "${MARIADB_PORT:-3306}:3306"
-    environment:
-      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
-      - MARIADB_USER=${MARIADB_USER:-devuser}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
-      - MARIADB_REPLICATION_USER=${MARIADB_REPLICATION_USER:-replicauser}
-      - MARIADB_REPLICATION_PASSWORD=${MARIADB_REPLICATION_PASSWORD:-replpassword}
-      - TZ=${TZ:-Asia/Dhaka}
-    volumes:
-      - ./data/mariadb-master:/var/lib/mysql
-      - ./logs/mariadb:/var/log/mysql
-    networks:
-      backend:
-        ipv4_address: 172.23.4.5  # Static IP for MariaDB Master
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    command:
-      --log-bin=mysql-bin
-      --server-id=1
-
-  # MariaDB Slave (Replica)
-  mariadb-slave:
-    container_name: MARIADB_SLAVE
-    image: mariadb:${MARIADB_VERSION:-latest}
-    profiles:
-      - mariadb-replication
-    restart: always
-    environment:
-      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
-      - MARIADB_USER=${MARIADB_USER:-devuser}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
-      - MARIADB_REPLICATION_USER=${MARIADB_REPLICATION_USER:-replicauser}
-      - MARIADB_REPLICATION_PASSWORD=${MARIADB_REPLICATION_PASSWORD:-replpassword}
-      - TZ=${TZ:-Asia/Dhaka}
-    volumes:
-      - ./data/mariadb-slave:/var/lib/mysql
-      - ./logs/mariadb:/var/log/mysql
-    networks:
-      backend:
-        ipv4_address: 172.23.4.6  # Static IP for MariaDB Slave
-    depends_on:
-      - mariadb-master
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    command:
-      --server-id=2
-    entrypoint: [ "sh", "-c", "
-      mysql -u root -p${MARIADB_ROOT_PASSWORD} -e \"
-        STOP SLAVE;
-        CHANGE MASTER TO MASTER_HOST='mariadb-master', MASTER_USER='${MARIADB_REPLICATION_USER}', MASTER_PASSWORD='${MARIADB_REPLICATION_PASSWORD}', MASTER_LOG_FILE='mysql-bin.000001', MASTER_LOG_POS=0;
-        START SLAVE;
-      \"
-    "]
-
-  # phpMyAdmin Client
+  # DBeaver (CloudBeaver) Client for Single MySQL Instance
   mysql-client:
-    container_name: MY_ADMIN
-    image: phpmyadmin:latest
+    container_name: MYSQL_CLIENT
+    image: dbeaver/cloudbeaver:latest
     restart: always
     ports:
-      - "${MYADMIN_PORT:-3300}:80"
+      - "${DBEAVER_PORT:-8080}:8978"  # DBeaver CloudBeaver uses port 8978 by default
     environment:
-      - PMA_ARBITRARY=1
       - TZ=${TZ:-Asia/Dhaka}
-      - PMA_PORT=${MYSQL_PORT:-3306}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-12345}
-      - MYSQL_USER=${MYSQL_USER:-devuser}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-12345}
+      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
+      - CB_ADMIN_PASSWORD=admin
+      - CB_DB_DRIVER=mysql  # Specify MySQL as the driver
+      - CB_DB_HOST=mysql-single  # Directly connect to MySQL single instance
+      - CB_DB_PORT=${MYSQL_PORT:-3306}
+      - CB_DB_DATABASE=${MYSQL_DATABASE:-localdb}
+      - CB_DB_USERNAME=${MYSQL_USER:-devuser}
+      - CB_DB_PASSWORD=${MYSQL_PASSWORD:-12345}
     volumes:
-      - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ./data/phpmyadmin:/etc/phpmyadmin/conf.d:ro
+      - ./data/dbeaver-mysql:/opt/cloudbeaver/workspace  # DBeaver workspace volume
     networks:
       frontend:
-        ipv4_address: 172.22.4.1  # Static IP for phpMyAdmin on Frontend network
+        ipv4_address: 172.22.4.1  # Static IP for DBeaver on Frontend network
       backend:
-        ipv4_address: 172.23.4.7  # Static IP for phpMyAdmin on Backend network
+        ipv4_address: 172.23.4.100  # Static IP for DBeaver on Backend network
     profiles:
-      mysql:
-        PMA_HOST: mysql-single
-      mysql-replication:
-        PMA_HOST: mysql-master
-      mariadb:
-        PMA_HOST: mariadb-single
-      mariadb-replication:
-        PMA_HOST: mariadb-master
+      - mysql-client
+
+  # DBeaver (CloudBeaver) Client for MySQL Replication
+  mysql-replication-client:
+    container_name: MYSQL_REPLICATION_CLIENT
+    image: dbeaver/cloudbeaver:latest
+    restart: always
+    ports:
+      - "${DBEAVER_PORT_REPLICATION:-8081}:8978"  # Using a different port for replication
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
+      - CB_ADMIN_PASSWORD=admin
+      - CB_DB_DRIVER=mysql  # Specify MySQL as the driver
+      - CB_DB_HOST=mysql-master  # Directly connect to the MySQL master for replication
+      - CB_DB_PORT=${MYSQL_PORT:-3306}
+      - CB_DB_DATABASE=${MYSQL_DATABASE:-localdb}
+      - CB_DB_USERNAME=${MYSQL_USER:-devuser}
+      - CB_DB_PASSWORD=${MYSQL_PASSWORD:-12345}
+    volumes:
+      - ./data/dbeaver-replication-mysql:/opt/cloudbeaver/workspace  # Separate workspace for replication
+    networks:
+      frontend:
+        ipv4_address: 172.22.4.2  # Static IP for DBeaver on Frontend network
+      backend:
+        ipv4_address: 172.23.4.101  # Static IP for DBeaver on Backend network
+    profiles:
+      - mysql-replication-client

@@ -76,6 +76,7 @@ services:
     restart: always
     environment:
       - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_INSIGHT_REDIS_HOST=redis-server
     ports:
       - "${RI_PORT:-5540}:5540"
     volumes:
@@ -84,11 +85,26 @@ services:
       frontend:
         ipv4_address: 172.22.8.1  # Static IP for RedisInsight on Frontend
       backend:
-        ipv4_address: 172.23.8.4  # Static IP for RedisInsight on Backend
+        ipv4_address: 172.23.8.100  # Static IP for RedisInsight on Backend
     profiles:
-      redis:
-        environment:
-          - REDIS_INSIGHT_REDIS_HOST=redis-server
-      redis-replication:
-        environment:
-          - REDIS_INSIGHT_REDIS_HOST=redis-master
+      - redis-client
+
+  # RedisInsight Client
+  redis-replication-client:
+    container_name: REDIS_REPLICATION_INSIGHT
+    image: redis/redisinsight:latest
+    restart: always
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - REDIS_INSIGHT_REDIS_HOST=redis-master
+    ports:
+      - "${RI_PORT:-5540}:5540"
+    volumes:
+      - ./data/redis-replication-insight:/data
+    networks:
+      frontend:
+        ipv4_address: 172.22.8.2  # Static IP for RedisInsight on Frontend
+      backend:
+        ipv4_address: 172.23.8.101  # Static IP for RedisInsight on Backend
+    profiles:
+      - redis-replication-client

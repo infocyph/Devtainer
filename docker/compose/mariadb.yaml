@@ -1,0 +1,151 @@
+services:
+  # MariaDB Single Instance
+  mariadb-single:
+    container_name: MARIADB_SINGLE
+    image: mariadb:${MARIADB_VERSION:-latest}
+    profiles:
+      - mariadb
+    restart: always
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
+      - MARIADB_USER=${MARIADB_USER:-devuser}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
+      - ./logs/mariadb:/var/log/mysql
+    networks:
+      backend:
+        ipv4_address: 172.23.9.1  # Static IP for MariaDB Single Instance
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MariaDB Master (Primary)
+  mariadb-master:
+    container_name: MARIADB_MASTER
+    image: mariadb:${MARIADB_VERSION:-latest}
+    profiles:
+      - mariadb-replication
+    restart: always
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
+      - MARIADB_USER=${MARIADB_USER:-devuser}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
+      - MARIADB_REPLICATION_USER=${MARIADB_REPLICATION_USER:-replicauser}
+      - MARIADB_REPLICATION_PASSWORD=${MARIADB_REPLICATION_PASSWORD:-replpassword}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./data/mariadb-master:/var/lib/mysql
+      - ./logs/mariadb:/var/log/mysql
+    networks:
+      backend:
+        ipv4_address: 172.23.9.2  # Static IP for MariaDB Master
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command:
+      --log-bin=mysql-bin
+      --server-id=1
+
+  # MariaDB Slave (Replica)
+  mariadb-slave:
+    container_name: MARIADB_SLAVE
+    image: mariadb:${MARIADB_VERSION:-latest}
+    profiles:
+      - mariadb-replication
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
+      - MARIADB_USER=${MARIADB_USER:-devuser}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD:-12345}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-localdb}
+      - MARIADB_REPLICATION_USER=${MARIADB_REPLICATION_USER:-replicauser}
+      - MARIADB_REPLICATION_PASSWORD=${MARIADB_REPLICATION_PASSWORD:-replpassword}
+      - TZ=${TZ:-Asia/Dhaka}
+    volumes:
+      - ./data/mariadb-slave:/var/lib/mysql
+      - ./logs/mariadb:/var/log/mysql
+    networks:
+      backend:
+        ipv4_address: 172.23.9.3  # Static IP for MariaDB Slave
+    depends_on:
+      - mariadb-master
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command:
+      --server-id=2
+    entrypoint: [ "sh", "-c", "
+      mysql -u root -p${MARIADB_ROOT_PASSWORD} -e \"
+        STOP SLAVE;
+        CHANGE MASTER TO MASTER_HOST='mariadb-master', MASTER_USER='${MARIADB_REPLICATION_USER}', MASTER_PASSWORD='${MARIADB_REPLICATION_PASSWORD}', MASTER_LOG_FILE='mysql-bin.000001', MASTER_LOG_POS=0;
+        START SLAVE;
+      \"
+    " ]
+
+  # DBeaver (CloudBeaver) Client for Single MariaDB Instance
+  mariadb-client:
+    container_name: MARIADB_CLIENT
+    image: dbeaver/cloudbeaver:latest
+    restart: always
+    ports:
+      - "${DBEAVER_PORT:-8080}:8978"  # DBeaver CloudBeaver uses port 8978 by default
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
+      - CB_ADMIN_PASSWORD=admin
+      - CB_DB_DRIVER=mariadb  # Specify MariaDB as the driver
+      - CB_DB_HOST=mariadb-single  # Directly connect to MariaDB single instance
+      - CB_DB_PORT=${MARIADB_PORT:-3306}
+      - CB_DB_DATABASE=${MARIADB_DATABASE:-localdb}
+      - CB_DB_USERNAME=${MARIADB_USER:-devuser}
+      - CB_DB_PASSWORD=${MARIADB_PASSWORD:-12345}
+    volumes:
+      - ./data/dbeaver-mariadb:/opt/cloudbeaver/workspace  # DBeaver workspace volume
+    networks:
+      frontend:
+        ipv4_address: 172.22.9.1  # Static IP for DBeaver on Frontend network
+      backend:
+        ipv4_address: 172.23.9.100  # Static IP for DBeaver on Backend network
+    profiles:
+      - mariadb-client
+
+  # DBeaver (CloudBeaver) Client for MariaDB Replication
+  mariadb-replication-client:
+    container_name: MARIADB_REPLICATION_CLIENT
+    image: dbeaver/cloudbeaver:latest
+    restart: always
+    ports:
+      - "${DBEAVER_PORT_REPLICATION:-8081}:8978"  # Using a different port for replication
+    environment:
+      - TZ=${TZ:-Asia/Dhaka}
+      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
+      - CB_ADMIN_PASSWORD=admin
+      - CB_DB_DRIVER=mariadb  # Specify MariaDB as the driver
+      - CB_DB_HOST=mariadb-master  # Directly connect to the MariaDB master for replication
+      - CB_DB_PORT=${MARIADB_PORT:-3306}
+      - CB_DB_DATABASE=${MARIADB_DATABASE:-localdb}
+      - CB_DB_USERNAME=${MARIADB_USER:-devuser}
+      - CB_DB_PASSWORD=${MARIADB_PASSWORD:-12345}
+    volumes:
+      - ./data/dbeaver-replication-mariadb:/opt/cloudbeaver/workspace  # Separate workspace for replication
+    networks:
+      frontend:
+        ipv4_address: 172.22.9.2  # Static IP for DBeaver on Frontend network
+      backend:
+        ipv4_address: 172.23.9.101  # Static IP for DBeaver on Backend network
+    profiles:
+      - mariadb-replication-client
