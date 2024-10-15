@@ -6,6 +6,7 @@ directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
 source "$directory/docker/utilities/common"
 source "$directory/docker/utilities/domain"
 source "$directory/docker/utilities/profiles"
+source "$directory/docker/utilities/env"
 
 check_required_commands "docker" "readlink"
 assign_permissions
@@ -23,14 +24,18 @@ domain)
   echo -e "${GREEN}All configurations have been completed.${NC}"
   ;;
 profiles)
-  # Main script execution
   prompt_common_vars
-
-  # Loop over all services in the array
   for service in "${!services_and_profiles[@]}"; do
     process_service "$service"
   done
 
   echo -e "${GREEN}Setup completed.${NC}"
+  ;;
+env)
+  env_file="$directory/.env"
+  if [ "$2" = "docker" ]; then
+    env_file="$directory/docker/.env"
+  fi
+  process_env_file "$env_file"
   ;;
 esac

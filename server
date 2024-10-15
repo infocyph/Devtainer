@@ -8,9 +8,9 @@ source "$directory/docker/utilities/common"
 usage() {
   cat <<EOF
 ${CYAN}Usage:${NC}
-$0 {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?}
+$0 {up|start|reload|stop|down|reboot|restart|rebuild|cli|core|tools|lzd|help}
 or
-server {up|start|reload|stop|down|reboot|restart|rebuild|core|tools|lzd|help|/?} (if you added the directory path in the System Environment Variables)
+server {up|start|reload|stop|down|reboot|restart|rebuild|cli|core|tools|lzd|help}
 
 Commands:
   ${YELLOW}up${NC}               Start Docker services (foreground)
@@ -18,6 +18,7 @@ Commands:
   ${YELLOW}stop, down${NC}       Stop or shut down Docker services
   ${YELLOW}reboot, restart${NC}  Restart Docker services
   ${YELLOW}rebuild${NC}          Rebuild Docker images with no cache
+  ${YELLOW}cli${NC}              Access the PHP container based on a domain configuration
   ${YELLOW}core${NC}             Access the Core container as 'devuser'
   ${YELLOW}tools${NC}            Access the SERVER_TOOLS container as 'devuser'
   ${YELLOW}lzd${NC}              Launch LazyDocker in the SERVER_TOOLS container
@@ -43,49 +44,91 @@ ensure_files_exist \
 update_env "/docker/.env" "WORKING_DIR" "$directory"
 copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
 
-# Handle the provided command
+# Handle provided commands
 case "$1" in
-up)
-  docker_compose up
-  ;;
-start | reload)
-  docker_compose up -d
-  reload_http_containers
-  ;;
-stop | down)
-  docker_compose down
-  ;;
-reboot | restart)
-  docker_compose down && docker_compose up -d
-  reload_http_containers
-  ;;
-rebuild)
-  docker_compose down && docker_compose build --no-cache --pull "${@:2}"
-  ;;
-config)
-  docker_compose config
-  ;;
-http)
-  if [ "$2" = reload ]; then
+  up)
+    docker_compose up
+    ;;
+  start | reload)
+    docker_compose up -d
     reload_http_containers
-  fi
-  ;;
-core)
-  docker exec -it Core bash -c "sudo -u devuser /bin/bash"
-  ;;
-tools)
-  docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
-  ;;
-lzd)
-  docker exec -it SERVER_TOOLS lazydocker
-  ;;
-help)
-  usage
-  ;;
-*)
-  echo -e "${RED}Invalid command: $1${NC}"
-  usage
-  exit 1
-  ;;
+    ;;
+  stop | down)
+    docker_compose down
+    ;;
+  reboot | restart)
+    docker_compose down && docker_compose up -d
+    reload_http_containers
+    ;;
+  rebuild)
+    docker_compose down && docker_compose build --no-cache --pull "${@:2}"
+    ;;
+  config)
+    docker_compose config
+    ;;
+  http)
+    if [ "$2" = reload ]; then
+      reload_http_containers
+    fi
+    ;;
+  cli)
+    if [ -z "$2" ]; then
+      echo -e "${RED}Please provide a domain (e.g., ./server cli test.com).${NC}"
+      exit 1
+    fi
+    domain="$2"
+    conf_file=""
+
+    # Define Apache and Nginx configuration file paths
+    apache_conf="$directory/configuration/apache/$domain.conf"
+    nginx_conf="$directory/configuration/nginx/$domain.conf"
+
+    # Check for the config file in Apache or Nginx directories
+    if [ -f "$apache_conf" ]; then
+      conf_file="$apache_conf"
+    elif [ -f "$nginx_conf" ]; then
+      conf_file="$nginx_conf"
+    else
+      echo -e "${RED}No configuration file found for $domain.${NC}"
+      exit 1
+    fi
+
+    # Extract PHP container and doc root from config file
+    php_container=$(grep -oP '(?<=fcgi://)[^:]+(?=:9000)' "$conf_file")
+    doc_root=$(grep -oP '(?<=/app)[^"]+' "$conf_file")
+
+    # Validate PHP container and document root
+    if [ -z "$php_container" ] || [ -z "$doc_root" ]; then
+      echo -e "${RED}Could not determine PHP container or document root for $domain.${NC}"
+      exit 1
+    fi
+
+    # Adjust PHP container naming (e.g., php83 -> PHP_8.3)
+    php_version="${php_container//php/}"
+    php_container="PHP_${php_version:0:1}.${php_version:1}"
+
+    echo -e "${GREEN}Launching into $php_container's bash panel and cd'ing to /app$doc_root...${NC}"
+
+    # Execute into PHP container and change directory
+    docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/bash"
+    ;;
+  core)
+    docker exec -it Core bash -c "sudo -u devuser /bin/bash"
+    ;;
+  tools)
+    docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
+    ;;
+  lzd)
+    docker exec -it SERVER_TOOLS lazydocker
+    ;;
+  help)
+    usage
+    ;;
+  *)
+    echo -e "${RED}Invalid command: $1${NC}"
+    usage
+    exit 1
+    ;;
 esac
+
 unset directory

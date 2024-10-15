@@ -224,7 +224,3 @@ process_env_file() {
 
   done < "$env_file"
 }
-
-# Call the main function to process the .env file
-env_file="./.env"
-process_env_file "$env_file"
