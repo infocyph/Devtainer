@@ -77,14 +77,18 @@ function prompt_for_http_https() {
             "HTTP only")
                 ENABLE_HTTPS="n"
                 ENABLE_REDIRECTION="n"
+                KEEP_HTTP="y"
                 break
                 ;;
             "HTTPS only")
+                check_container_not_running "CERTIFICATE_BOT"
                 ENABLE_HTTPS="y"
                 ENABLE_REDIRECTION="n"
+                KEEP_HTTP="n"
                 break
                 ;;
             "Both HTTP and HTTPS")
+                check_container_not_running "CERTIFICATE_BOT"
                 ENABLE_HTTPS="y"
                 read -e -r -p "$(echo -e "${CYAN}Set up HTTP to HTTPS redirection (y/n)?${NC}") " ENABLE_REDIRECTION
                 if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
@@ -148,10 +152,10 @@ function prompt_for_client_max_body_size() {
 function prompt_for_php_version() {
     echo -e "${CYAN}Choose the PHP version:${NC}"
     PS3="Enter the number: "
-    options=("8.0" "8.1" "8.2" "8.3" "8.4")
+    options=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
     select PHP_VERSION in "${options[@]}"; do
         if [[ -n "$PHP_VERSION" ]]; then
-            PHP_CONTAINER="php${PHP_VERSION//./}"  # Create container name dynamically
+            PHP_CONTAINER="php${PHP_VERSION//./}"
             echo -e "${GREEN}You have selected PHP version $PHP_VERSION.${NC}"
             break
         else
@@ -181,8 +185,10 @@ function create_configuration() {
     # Set configuration file path based on server type
     if [[ "$SERVER_TYPE" == "Nginx" ]]; then
         CONFIG_FILE="configuration/nginx/${DOMAIN_NAME}.conf"
+        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER}"
     elif [[ "$SERVER_TYPE" == "Apache" ]]; then
         CONFIG_FILE="configuration/apache/${DOMAIN_NAME}.conf"
+        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "apache" "${PHP_CONTAINER}"
     else
         echo -e "${RED}Invalid server type: $SERVER_TYPE${NC}"
         return 1
@@ -190,35 +196,27 @@ function create_configuration() {
 
     # Handle redirection and HTTP configuration
     if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
-        echo -e "${YELLOW}Adding redirection configuration for ${DOMAIN_NAME}.${NC}"
         generate_conf_from_template "$base_template_path/redirect.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
     elif [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
-        echo -e "${YELLOW}Adding HTTP configuration for ${DOMAIN_NAME}.${NC}"
         generate_conf_from_template "$base_template_path/http.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
     fi
 
     # Handle HTTPS configuration
     if [[ "$ENABLE_HTTPS" == "y" ]]; then
-        echo -e "${YELLOW}Adding HTTPS configuration for ${DOMAIN_NAME}.${NC}"
         generate_conf_from_template "$base_template_path/https.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
 
-        # Certbot command to issue SSL certificate
+        # Issue SSL certificate
         local certbot_cmd="docker exec -it CERTIFICATE_BOT certbot certonly --webroot --webroot-path=/var/www/certbot \
             --email ${EMAIL_ADDRESS} --agree-tos --no-eff-email -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}"
-
-        echo -e "${YELLOW}Requesting SSL certificate for $DOMAIN_NAME and www.$DOMAIN_NAME...${NC}"
         if ! eval "$certbot_cmd"; then
             echo -e "${RED}Error issuing SSL certificate for ${DOMAIN_NAME}.${NC}"
             return 1
         fi
-        echo -e "${GREEN}SSL certificate issued successfully for ${DOMAIN_NAME}.${NC}"
+        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "certbot"
     fi
 
-    echo -e "\n${GREEN}Configuration for ${DOMAIN_NAME} has been saved to $CONFIG_FILE.${NC}"
+    echo -e "\n${GREEN}Configuration for ${DOMAIN_NAME} has been saved.${NC}"
 }
-
-
-
 
 # Start the script
 function configure_server() {

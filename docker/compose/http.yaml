@@ -1,5 +1,13 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   nginx:
+    <<: *default-service
     container_name: NGINX
     image: nginx:${NGINX_VERSION:-latest}
     profiles:
@@ -8,8 +16,6 @@ services:
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./docker/logs/nginx:/var/log/nginx
       - ./configuration/nginx:/etc/nginx/conf.d
@@ -30,6 +36,7 @@ services:
       retries: 3
 
   apache:
+    <<: *default-service
     container_name: APACHE
     build:
       context: docker/conf/docker-files
@@ -39,8 +46,6 @@ services:
     profiles:
       - apache
     restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
     ports:
       - "${APACHE_HTTP_PORT:-80}:80"
       - "${APACHE_HTTPS_PORT:-443}:443"

@@ -1,6 +1,14 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   # PostgreSQL Single Instance
   postgres-server:
+    <<: *default-service
     container_name: POSTGRESQL
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
@@ -12,7 +20,6 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./data/postgresql:/var/lib/postgresql/data
     networks:
@@ -26,6 +33,7 @@ services:
 
   # PostgreSQL Primary (Master) Server
   postgres-master:
+    <<: *default-service
     container_name: POSTGRES_MASTER
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
@@ -37,7 +45,6 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./data/postgresql-master:/var/lib/postgresql/data
       - ./configuration/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf  # Custom config for replication
@@ -53,6 +60,7 @@ services:
 
   # PostgreSQL Replica (Slave) Server
   postgres-replica:
+    <<: *default-service
     container_name: POSTGRES_REPLICA
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
@@ -62,8 +70,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
-      - REPLICATE_FROM=postgres-master  # To point to the master
-      - TZ=${TZ:-Asia/Dhaka}
+      - REPLICATE_FROM=postgres-master
     volumes:
       - ./data/postgresql-replica:/var/lib/postgresql/data
     networks:
@@ -83,6 +90,7 @@ services:
 
   # pgAdmin Client
   postgres-client:
+    <<: *default-service
     container_name: PG_ADMIN
     image: dpage/pgadmin4:latest
     restart: always
@@ -91,7 +99,6 @@ services:
     environment:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
-      - TZ=${TZ:-Asia/Dhaka}
       - PGADMIN_HOST=postgres-server
     volumes:
       - ./data/pgadmin:/var/lib/pgadmin
@@ -105,6 +112,7 @@ services:
 
   # pgAdmin Client
   postgres-replication-client:
+    <<: *default-service
     container_name: PG_REPLICATION_ADMIN
     image: dpage/pgadmin4:latest
     restart: always
@@ -113,7 +121,6 @@ services:
     environment:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
-      - TZ=${TZ:-Asia/Dhaka}
       - PGADMIN_HOST=postgres-master
     volumes:
       - ./data/pgadmin-replication:/var/lib/pgadmin

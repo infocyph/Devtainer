@@ -1,0 +1,178 @@
+#!/bin/bash
+
+directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
+# Declare associative arrays for services, profiles, environment variables, and client profiles
+declare -A services_and_profiles
+declare -A profile_env_vars
+declare -A client_profiles
+
+# Populate services and their corresponding profiles
+services_and_profiles=(
+    ["ELASTICSEARCH"]="elasticsearch elasticsearch-cluster"
+    ["PHP_FPM"]="php php74 php80 php81 php82 php83 php84"
+    ["REDIS"]="redis redis-replication"
+    ["MARIADB"]="mariadb mariadb-replication"
+    ["PHP_CLI"]="php-cli php74-cli php80-cli php81-cli php82-cli php83-cli php84-cli"
+    ["PSQL"]="postgresql postgresql-replication"
+    ["MONGO"]="mongodb mongodb-replica"
+    ["HTTP"]="nginx apache"
+    ["COMPANION"]="tools"
+    ["MYSQL"]="mysql mysql-replication"
+)
+
+# Populate environment variables for each profile
+profile_env_vars=(
+    ["elasticsearch"]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_NUMBER_OF_SHARDS=3"
+    ["elasticsearch-client"]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_NUMBER_OF_REPLICAS=2"
+    ["elasticsearch-cluster"]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_NUMBER_OF_REPLICAS=2"
+    ["php"]="PHP_VERSION=8.2"
+    ["php74"]="PHP_VERSION=7.4"
+    ["php80"]="PHP_VERSION=8.0"
+    ["php81"]="PHP_VERSION=8.1"
+    ["php82"]="PHP_VERSION=8.2"
+    ["php83"]="PHP_VERSION=8.3"
+    ["php84"]="PHP_VERSION=8.4"
+    ["redis"]="REDIS_VERSION=latest REDIS_PORT=6379"
+    ["redis-replication"]="REDIS_VERSION=latest REDIS_PORT=6379"
+    ["mariadb"]="MARIADB_VERSION=latest MARIADB_PORT=3306"
+    ["mariadb-replication"]="MARIADB_VERSION=latest MARIADB_PORT=3306"
+    ["php-cli"]="PHP_VERSION=8.2"
+    ["php74-cli"]="PHP_VERSION=7.4"
+    ["php80-cli"]="PHP_VERSION=8.0"
+    ["php81-cli"]="PHP_VERSION=8.1"
+    ["php82-cli"]="PHP_VERSION=8.2"
+    ["php83-cli"]="PHP_VERSION=8.3"
+    ["php84-cli"]="PHP_VERSION=8.4"
+    ["postgresql"]="POSTGRESQL_VERSION=latest POSTGRESQL_PORT=5432"
+    ["postgresql-replication"]="POSTGRESQL_VERSION=latest POSTGRESQL_PORT=5432"
+    ["postgresql-client"]="PGADMIN_DEFAULT_PASSWORD"
+    ["mongodb"]="MONGODB_VERSION=latest MONGODB_PORT=27017"
+    ["mongodb-replica"]="MONGODB_VERSION=latest MONGODB_PORT=27017"
+    ["nginx"]="NGINX_VERSION=latest"
+    ["apache"]="APACHE_VERSION=latest"
+    ["tools"]="USER_UID=1000 GID=root"
+    ["mysql"]="MYSQL_VERSION=latest MYSQL_PORT=3306"
+    ["mysql-replication"]="MYSQL_VERSION=latest MYSQL_PORT=3306"
+)
+
+# Define client profiles for certain services
+client_profiles=(
+    ["elasticsearch"]="elasticsearch-client"
+    ["postgresql"]="postgresql-client"
+    ["mysql"]="mysql-client"
+)
+
+# Function to prompt for common variables
+prompt_common_vars() {
+    read -p "Enter the timezone (TZ) [default: Asia/Dhaka]: " TZ
+    TZ=${TZ:-Asia/Dhaka}
+
+    read -p "Enter the user UID [default: $UID]: " USER_UID
+    USER_UID=${USER_UID:-$UID}
+
+    read -p "Enter the user GID [default: root]: " GID
+    GID=${GID:-root}
+
+    echo "Common Variables:"
+    echo "TZ = $TZ"
+    echo "USER_UID = $USER_UID"
+    echo "GID = $GID"
+
+    # Write common variables to the .env file
+    update_env "/docker/.env" "TZ" "$TZ"
+    update_env "/docker/.env" "UID" "$USER_UID"
+    update_env "/docker/.env" "GID" "$GID"
+}
+
+# Function to update .env file with key-value pairs
+update_env() {
+  local env_file="${directory}$1" # Prepend $directory to the provided env_file path
+  local var_name="$2"
+  local var_value="$3"
+
+  if grep -qF "${var_name}=" "$env_file"; then
+    local existing="$(grep "${var_name}=" "$env_file" | cut -d '=' -f 2)"
+    if [ -z "$existing" ]; then
+      sed -i "s|${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+      echo -e "${GREEN}- Updated ${var_name} in $env_file.${NC}"
+    fi
+  else
+    echo -e "${var_name}=${var_value}" >>"$env_file"
+    echo -e "${GREEN}- Added ${var_name} to $env_file.${NC}"
+  fi
+}
+
+# Function to process each service
+process_service() {
+    local service_name="$1"
+    local profiles="${services_and_profiles[$service_name]}"
+
+    echo "Processing $service_name..."
+    read -p "Do you want to enable $service_name? (y/n) " enable_service
+    if [[ "$enable_service" != "y" ]]; then
+        echo "Skipping $service_name..."
+        return
+    fi
+
+    echo "Which profile do you want to enable?"
+    local profile_choice=()
+    local profile_index=1
+    for profile in $profiles; do
+        echo "$profile_index. $profile"
+        profile_choice[$profile_index]="$profile"
+        ((profile_index++))
+    done
+
+    read -p "Enter your profile choice number: " profile_number
+    selected_profile=${profile_choice[$profile_number]}
+
+    echo "Selected profile: $selected_profile"
+
+    # Handle environment variables for the selected profile
+    IFS=" " read -r -a env_vars <<< "${profile_env_vars[$selected_profile]}"
+
+    for env_var in "${env_vars[@]}"; do
+        key=$(echo "$env_var" | cut -d= -f1)
+        default_value=$(echo "$env_var" | cut -d= -f2)
+        read -p "Provide the value for '$key' (current/default: $default_value): " input_value
+        input_value=${input_value:-$default_value}
+        echo "Setting $key = $input_value"
+
+        # Write to .env file
+        update_env "/docker/.env" "$key" "$input_value"
+    done
+
+    # Check if there's a client profile associated with this service
+    if [[ -n "${client_profiles[$selected_profile]}" ]]; then
+        local client_profile="${client_profiles[$selected_profile]}"
+        read -p "Do you want to enable the client for $selected_profile ($client_profile)? (y/n) " enable_client
+        if [[ "$enable_client" == "y" ]]; then
+            echo "Enabling client profile: $client_profile"
+
+            # Check for environment variables for the client
+            IFS=" " read -r -a client_env_vars <<< "${profile_env_vars[$client_profile]}"
+            for client_env_var in "${client_env_vars[@]}"; do
+                key=$(echo "$client_env_var" | cut -d= -f1)
+                default_value=$(echo "$client_env_var" | cut -d= -f2)
+                read -p "Provide the value for '$key' (current/default: $default_value): " client_input_value
+                client_input_value=${client_input_value:-$default_value}
+                echo "Setting $key = $client_input_value"
+
+                # Write to .env file
+                update_env "/docker/.env" "$key" "$client_input_value"
+            done
+        else
+            echo "Skipping client for $service_name."
+        fi
+    fi
+}
+
+# Main script execution
+prompt_common_vars
+
+# Loop over all services in the array
+for service in "${!services_and_profiles[@]}"; do
+    process_service "$service"
+done
+
+echo "Setup completed."

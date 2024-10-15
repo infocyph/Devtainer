@@ -1,9 +1,20 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   certbot:
+    <<: *default-service
     build:
       context: docker/conf/docker-files
       dockerfile: certbot.Dockerfile
     container_name: CERTIFICATE_BOT
+    profiles:
+      - certbot
+    restart: always
     volumes:
       - ./configuration/ssl:/etc/letsencrypt
       - ./configuration/certbot:/var/www/certbot
@@ -14,17 +25,16 @@ services:
         ipv4_address: 172.21.0.1  # Static IP for Certbot
 
   server-tools:
+    <<: *default-service
     container_name: SERVER_TOOLS
     build:
       context: docker/conf/docker-files
       dockerfile: tools.Dockerfile
-    args:
-      UID: ${UID:-1000}
+      args:
+        UID: ${UID:-1000}
     profiles:
       - tools
     restart: always
-    environment:
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./configuration/ssl:/etc/ssl/custom
       - ./configuration/ssh:/home/devuser/.ssh

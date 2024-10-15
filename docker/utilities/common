@@ -24,3 +24,128 @@ check_required_commands() {
     fi
   done
 }
+update_env() {
+  local env_file="${directory}$1" # Prepend $directory to the provided env_file path
+  local var_name="$2"
+  local var_value="$3"
+
+  if grep -qF "${var_name}=" "$env_file"; then
+    local existing="$(grep "${var_name}=" "$env_file" | cut -d '=' -f 2)"
+    if [ -z "$existing" ]; then
+      sed -i "s|${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+    fi
+  else
+    echo -e "${var_name}=${var_value}" >>"$env_file"
+  fi
+}
+# Function to assign the correct permissions
+assign_permissions() {
+  if [[ "$(uname -s)" == *NT* || "$(uname -o)" == *Msys* || "$(uname -o)" == *Cygwin* ]]; then
+    return
+  fi
+
+  # Set global permission on the $directory
+  if [ "$(stat -c "%a" "$directory")" != "755" ]; then
+    chmod 755 "$directory"
+  fi
+
+  if [ "$(stat -c "%a" "$directory/configuration/")" != "775" ]; then
+    chmod 775 "$directory/configuration/"
+  fi
+  find "$directory/configuration/" -type f ! -perm 664 -exec chmod 664 {} \;
+  chmod g+s "$directory/configuration/"
+
+  if [ "$(stat -c "%a" "$directory/docker/")" != "755" ]; then
+    chmod 755 "$directory/docker/"
+  fi
+  find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
+  find "$directory/docker/conf/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
+
+  if [ "$(stat -c "%a" "$directory/data/")" != "775" ]; then
+    chmod 775 "$directory/data/"
+  fi
+  find "$directory/data/" -type f ! -perm 660 -exec chmod 660 {} \;
+  chmod g+s "$directory/data/"
+  chown -R "$USER:docker" "$directory/data/"
+
+  if [ "$(stat -c "%a" "$directory/logs/")" != "775" ]; then
+    chmod 775 "$directory/logs/"
+  fi
+  find "$directory/logs/" -type f ! -perm 660 -exec chmod 660 {} \;
+  chmod g+s "$directory/logs/"
+  chown -R "$USER:docker" "$directory/logs/"
+
+  if [ "$(stat -c "%a" "$directory/bin/")" != "755" ]; then
+    chmod 755 "$directory/bin/"
+  fi
+  find "$directory/bin/" -type f ! -perm 744 -exec chmod 744 {} \;
+
+  if [ "$(stat -c "%a" "$directory/server")" != "744" ]; then
+    chmod 744 "$directory/server"
+  fi
+
+  if [ "$(stat -c "%a" "$directory/setup")" != "744" ]; then
+    chmod 744 "$directory/setup"
+  fi
+}
+
+# Function to check if a container is not running
+check_container_not_running() {
+  local container_name=$1
+
+  if [ "$(docker inspect -f '{{.State.Running}}' $container_name 2>/dev/null)" != "true" ]; then
+    echo -e "\033[0;31mWarning: Container $container_name is not running or does not exist.\033[0m"
+    exit 1
+  else
+    echo -e "\033[0;32mContainer $container_name is running.\033[0m"
+  fi
+}
+
+# Function to add or remove profiles from a given environment variable in an .env file
+modify_compose_profiles() {
+  local env_file="$1"         # .env file location
+  local var_name="$2"         # Variable name (e.g., COMPOSE_PROFILES)
+  local action="$3"           # "add" or "remove"
+  shift 3                     # Shift to access the profiles after the first three arguments
+  local profiles=("$@")       # Array of profiles to add or remove
+
+  local existing_profiles=""
+  if grep -q "^${var_name}=" "$env_file"; then
+    existing_profiles=$(grep "^${var_name}=" "$env_file" | cut -d '=' -f 2 | tr ',' '\n')
+  fi
+
+  local updated_profiles=()
+
+  # Process action (add/remove)
+  case "$action" in
+    add)
+      for profile in "${profiles[@]}"; do
+        if ! echo "$existing_profiles" | grep -qx "$profile"; then
+          updated_profiles+=("$profile")
+        fi
+      done
+      updated_profiles+=($(echo "$existing_profiles"))  # Add existing profiles
+      ;;
+    remove)
+      for profile in $existing_profiles; do
+        if [[ ! " ${profiles[*]} " =~ " ${profile} " ]]; then
+          updated_profiles+=("$profile")  # Keep profiles not marked for removal
+        fi
+      done
+      ;;
+    *)
+      echo "Invalid action. Use 'add' or 'remove'."
+      return 1
+      ;;
+  esac
+
+  # Convert updated profiles back to CSV format
+  local updated_profiles_str
+  updated_profiles_str=$(
+    IFS=,
+    echo "${updated_profiles[*]}"
+  )
+
+  # Modify or add COMPOSE_PROFILES in the .env file
+  update_env "$env_file" "$var_name" "$updated_profiles_str"
+}

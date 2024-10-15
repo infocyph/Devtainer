@@ -1,130 +1,230 @@
 #!/bin/bash
 
-# Global Variables
-env_file=".env"  # Path to your .env file
-var_name="COMPOSE_PROFILES"
-valid_profiles=("apache" "nginx" "php" "mysql" "redis" "certbot" "tools")
-existing_profiles=""
+declare -A regex_patterns
+regex_patterns=(
+  # Highly specific formats (least possible match)
 
-# Function to load existing profiles from .env
-load_existing_profiles() {
-    if grep -q "^${var_name}=" "$env_file"; then
-        existing_profiles=$(grep "^${var_name}=" "$env_file" | cut -d '=' -f 2 | tr ',' '\n')
-    fi
-}
+  # UUID format (very specific)
+  ["UUID"]="^[a-f0-9]{8}-[a-f0-9]{4}-[1-9][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
 
-# Function to check if a profile exists in the valid profiles array
-profile_exists() {
-    local profile="$1"
-    for valid_profile in "${valid_profiles[@]}"; do
-        if [[ "$valid_profile" == "$profile" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
+  # MAC address
+  ["MAC"]="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
 
-# Function to check if a profile is in existing profiles
-profile_in_existing() {
-    local profile="$1"
-    echo "$existing_profiles" | grep -qx "$profile"
-}
+  # IP address (v4 or v6)
+  ["IP"]="^((([0-9]{1,3}\.){3}[0-9]{1,3})|([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::1)$"
 
-# Function to update or add COMPOSE_PROFILES in the .env file
-modify_compose_profiles() {
-    local selected_profiles=()
-    local profile_status=()
-    local default_choice=""
-    local choice
-    local selected
+  # Port (1-65535)
+  ["PORT"]="^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$"
 
-    # Mark existing profiles in the list and pre-populate the default choice
-    for i in "${!valid_profiles[@]}"; do
-        if echo "$existing_profiles" | grep -qx "${valid_profiles[$i]}"; then
-            profile_status[$i]="[x]"
-            default_choice+="$((i + 1)),"  # Pre-select profiles in the list
-        else
-            profile_status[$i]="[ ]"
-        fi
-    done
+  # Date patterns (ISO, US, EU formats)
+  ["DATE"]="^([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4}|[0-9]{2}\.[0-9]{2}\.[0-9]{4})$"
 
-    # Remove trailing comma from default_choice
-    default_choice="${default_choice%,}"
+  # Time patterns (HH:MM:SS, HH:MM, AM/PM)
+  ["TIME"]="^((([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9])|(([01][0-9]|2[0-3]):[0-5][0-9])|(([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] ?[APap][Mm])|(([0-1]?[0-9]|2[0-3]):[0-5][0-9] ?[APap][Mm]))$"
 
-    # Display available profiles with numbers and mark existing ones
-    echo "Select the profiles (comma-separated numbers or range, e.g., 1,2,5-7):"
-    for i in "${!valid_profiles[@]}"; do
-        echo "$((i + 1)). ${profile_status[$i]} ${valid_profiles[$i]}"
-    done
+  # Boolean (true/false)
+  ["BOOLEAN"]="^(true|false)$"
 
-    # Prompt for user input with the existing choices pre-filled
-    read -e -p "Enter your choice: " -i "$default_choice" choice
+  # Numeric (integer only)
+  ["NUMERIC"]="^[0-9]+$"
 
-    # Expand any ranges like 1-3 into individual numbers
-    IFS=',' read -ra selected <<< "$choice"
-    for item in "${selected[@]}"; do
-        if [[ "$item" == *"-"* ]]; then
-            local start end
-            start=$(echo "$item" | cut -d'-' -f1)
-            end=$(echo "$item" | cut -d'-' -f2)
-            for ((i = start; i <= end; i++)); do
-                selected_profiles+=("${valid_profiles[i - 1]}")
-            done
-        else
-            selected_profiles+=("${valid_profiles[item - 1]}")
-        fi
-    done
+  # Floating-point numbers (positive or negative)
+  ["FLOAT"]="^-?[0-9]*\.[0-9]+$"
 
-    # Join selected profiles into a CSV string
-    local selected_profiles_str
-    selected_profiles_str=$(IFS=,; echo "${selected_profiles[*]}")
+  # Hexadecimal numbers (e.g., FF or ff)
+  ["HEX"]="^[a-fA-F0-9]+$"
 
-    # Modify or add COMPOSE_PROFILES in the .env file
-    if grep -q "^${var_name}=" "$env_file"; then
-        sed -i "s|^${var_name}=.*|${var_name}=${selected_profiles_str}|" "$env_file"
-        echo "COMPOSE_PROFILES has been updated in $env_file."
+  # Email pattern
+  ["EMAIL"]="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+  # URL pattern (general)
+  ["URL"]="^((https?|ftp|file|mailto):\/\/)?([a-zA-Z0-9.-]+(:[a-zA-Z0-9.&%$-]+)*@)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(:[0-9]{2,5})?(\/[a-zA-Z0-9.,?'\\+&%$#=~_-]*)*$"
+
+  # File extension (e.g., .txt, .log, .conf)
+  ["FILE_EXTENSION"]="\.[a-zA-Z0-9]+$"
+
+  # File name (e.g., index.html, index.php)
+  ["FILE"]="^(?!.*[<>:\"/\\|?*])[^\s]+[^\s.]{1,255}$"
+
+  # Hostname or localhost
+  ["HOST"]="^((localhost|([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,})|([0-9]{1,3}\.){3}[0-9]{1,3}|([a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})$"
+
+  # File path (Unix-style, no spaces)
+  ["PATH"]="^(/[^/ ]*)+/?$"
+
+  # Alphabetic only (A-Z, a-z)
+  ["ALPHA"]="^[a-zA-Z]+$"
+
+  # Alphanumeric (A-Z, a-z, 0-9)
+  ["ALPHA_NUMERIC"]="^[a-zA-Z0-9]+$"
+
+  # Alphanumeric with spaces (A-Z, a-z, 0-9, space)
+  ["ALPHA_NUMERIC_SPACES"]="^[a-zA-Z0-9 ]+$"
+
+  # Generic string (anything that is not empty and doesn't start with special characters) (most possible match)
+  ["STRING"]="^[^[:space:]]+.*$"
+)
+
+
+# Function to validate input and keep asking until it's valid
+ask_and_validate() {
+  local pattern="$1"
+  local message="$2"
+  local current_value="$3"
+  local user_input=""
+  local is_valid=0
+
+  while [[ $is_valid -eq 0 ]]; do
+    # Use read -rp to show the prompt and read the input from /dev/tty
+    read -rp "$message (current: $current_value): " user_input </dev/tty
+
+    # If the user input is empty, use the current value
+    user_input="${user_input:-$current_value}"
+    # If there's no pattern, accept the value as valid without checking
+    if [[ -z "$pattern" ]]; then
+      is_valid=1
+    elif [[ "$user_input" =~ $pattern ]]; then
+      is_valid=1
     else
-        echo "${var_name}=${selected_profiles_str}" >>"$env_file"
-        echo "COMPOSE_PROFILES has been added to $env_file."
+      echo "Invalid input, please try again." >/dev/tty
+      is_valid=0 # Input did not match the pattern, retry
     fi
+  done
+
+  # Return the validated value
+  echo "$user_input"
 }
 
-# Function to update or add profiles to COMPOSE_PROFILES based on passed parameters
-modify_compose_profiles_param() {
-    local new_profiles=("$@")  # Accepts an array of profiles to add
-    local updated_profiles=()
+# Function to detect, validate, and keep asking for valid input
+validate_variable() {
+  local var_name="$1"
+  local current_value="$2"
+  local new_value=""
+  local detected_type=""
+  local pattern_name
 
-    # Loop through the new profiles and add them if valid and not already present
-    for profile in "${new_profiles[@]}"; do
-        if profile_exists "$profile"; then
-            if ! profile_in_existing "$profile"; then
-                updated_profiles+=("$profile")
-            fi
-        else
-            echo "Warning: '$profile' is not a valid profile."
-        fi
+  # Check if the name matches one of the regex pattern keys (like *_PATTERN_*, PATTERN_.*, etc.)
+  for pattern_name in "${!regex_patterns[@]}"; do
+    if [[ "$var_name" =~ ^${pattern_name}_.* ||
+      "$var_name" =~ .*_${pattern_name}$ ||
+      "$var_name" =~ .*_${pattern_name}_.* ||
+      "$var_name" =~ ^${pattern_name}$ ]]; then
+      detected_type="$pattern_name"
+      break
+    fi
+  done
+
+  # If name-based detection failed, try value-based detection
+  if [[ -z "$detected_type" && -n "$current_value" ]]; then
+    for pattern_name in "${!regex_patterns[@]}"; do
+      if [[ "$current_value" =~ ${regex_patterns[$pattern_name]} ]]; then
+        detected_type="$pattern_name"
+        break
+      fi
     done
+  fi
 
-    # Combine existing and newly added profiles
-    updated_profiles+=($(echo "$existing_profiles"))
+  # If no type is detected, assume the value is a string
+  if [[ -z "$detected_type" ]]; then
+    detected_type="STRING"
+  fi
 
-    # Join updated profiles into a CSV string
-    local updated_profiles_str
-    updated_profiles_str=$(IFS=,; echo "${updated_profiles[*]}")
+  # Validation process based on detected type
+  case "$detected_type" in
+  UUID)
+    new_value=$(ask_and_validate "${regex_patterns[UUID]}" "Enter a valid UUID for $var_name" "$current_value")
+    ;;
+  IP_ADDRESS)
+    new_value=$(ask_and_validate "${regex_patterns[IP_ADDRESS]}" "Enter a valid IP address for $var_name" "$current_value")
+    ;;
+  TIME)
+    new_value=$(ask_and_validate "${regex_patterns[TIME]}" "Enter a valid time (HH:MM:SS) for $var_name" "$current_value")
+    ;;
+  DATE)
+    new_value=$(ask_and_validate "${regex_patterns[DATE]}" "Enter a valid date (YYYY-MM-DD) for $var_name" "$current_value")
+    ;;
+  DATE_DDMMYYYY)
+    new_value=$(ask_and_validate "${regex_patterns[DATE_DDMMYYYY]}" "Enter a valid date (DD-MM-YYYY) for $var_name" "$current_value")
+    ;;
+  DATE_MMDDYYYY)
+    new_value=$(ask_and_validate "${regex_patterns[DATE_MMDDYYYY]}" "Enter a valid date (MM-DD-YYYY) for $var_name" "$current_value")
+    ;;
+  BOOLEAN)
+    new_value=$(ask_and_validate "${regex_patterns[BOOLEAN]}" "Enter a valid boolean (true/false) for $var_name" "$current_value")
+    ;;
+  NUMERIC)
+    new_value=$(ask_and_validate "${regex_patterns[NUMERIC]}" "Enter a valid number for $var_name" "$current_value")
+    ;;
+  FLOAT)
+    new_value=$(ask_and_validate "${regex_patterns[FLOAT]}" "Enter a valid floating-point number for $var_name" "$current_value")
+    ;;
+  EMAIL)
+    new_value=$(ask_and_validate "${regex_patterns[EMAIL]}" "Enter a valid email for $var_name" "$current_value")
+    ;;
+  URL)
+    new_value=$(ask_and_validate "${regex_patterns[URL]}" "Enter a valid URL for $var_name" "$current_value")
+    ;;
+  HEX)
+    new_value=$(ask_and_validate "${regex_patterns[HEX]}" "Enter a valid hexadecimal value for $var_name" "$current_value")
+    ;;
+  ALPHA)
+    new_value=$(ask_and_validate "${regex_patterns[ALPHA]}" "Enter an alphabetic value for $var_name" "$current_value")
+    ;;
+  ALPHA_NUMERIC)
+    new_value=$(ask_and_validate "${regex_patterns[ALPHA_NUMERIC]}" "Enter an alphanumeric value for $var_name" "$current_value")
+    ;;
+  ALPHA_NUMERIC_SPACES)
+    new_value=$(ask_and_validate "${regex_patterns[ALPHA_NUMERIC_SPACES]}" "Enter an alphanumeric value with spaces for $var_name" "$current_value")
+    ;;
+  FILE_PATH)
+    new_value=$(ask_and_validate "${regex_patterns[FILE_PATH]}" "Enter a valid file path for $var_name" "$current_value")
+    ;;
+  FILE_EXTENSION)
+    new_value=$(ask_and_validate "${regex_patterns[FILE_EXTENSION]}" "Enter a valid file extension for $var_name" "$current_value")
+    ;;
+  *)
+    read -rp "Enter the value for $var_name (current: $current_value): " new_value </dev/tty
+    new_value="${new_value:-$current_value}"
+    ;;
+  esac
 
-    # Modify or add COMPOSE_PROFILES in the .env file
-    if grep -q "^${var_name}=" "$env_file"; then
-        sed -i "s|^${var_name}=.*|${var_name}=${updated_profiles_str}|" "$env_file"
-        echo "COMPOSE_PROFILES has been updated in $env_file."
-    else
-        echo "${var_name}=${updated_profiles_str}" >>"$env_file"
-        echo "COMPOSE_PROFILES has been added to $env_file."
-    fi
+  # Return the actual new value
+  echo "$new_value"
 }
 
-# Example usage
-load_existing_profiles
-modify_compose_profiles
+# Process the .env file and replace lines with validated values
+process_env_file() {
+  local env_file="$1"
 
-# Example usage for modifying based on passed parameters
-modify_compose_profiles_param "nginx" "redis" "certbot"
+  # Check if the file exists
+  if [[ ! -f "$env_file" ]]; then
+    echo "File $env_file does not exist."
+    exit 1
+  fi
+  # Iterate over the lines in the array
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^\s*$ || "$line" =~ ^\# ]] && continue
+    line=${line%%#*}
+    local var_name="${line%%=*}"
+    local current_value="${line#*=}"
+    var_name=$(echo "$var_name" | xargs)
+    current_value="${current_value#"${current_value%%[![:space:]]*}"}"
+    current_value="${current_value%"${current_value##*[![:space:]]}"}"
+    if [[ "$current_value" =~ ^\".*\"$ || "$current_value" =~ ^\'.*\'$ ]]; then
+      current_value="${current_value:1:-1}"
+    fi
+    # Validate the variable using the validation function
+    validated_value=$(validate_variable "$var_name" "$current_value")
+
+    # 6. Escape special characters in the value for `sed`
+    escaped_new_value=$(printf '%s\n' "$validated_value" | sed 's/[&/\]/\\&/g')
+
+    # 7. Safely replace the line in the .env file with the new value using sed
+    sed -i "s|^$var_name=.*|$var_name=\"$escaped_new_value\"|" "$env_file"
+
+  done < "$env_file"
+}
+
+# Call the main function to process the .env file
+env_file="./.env"
+process_env_file "$env_file"

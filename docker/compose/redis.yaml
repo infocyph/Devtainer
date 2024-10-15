@@ -1,6 +1,14 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   # Redis Single Instance
   redis-server:
+    <<: *default-service
     container_name: REDIS
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
@@ -11,7 +19,6 @@ services:
     volumes:
       - ./data/redis:/data
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
       backend:
@@ -24,6 +31,7 @@ services:
 
   # Redis Master (Primary)
   redis-master:
+    <<: *default-service
     container_name: REDIS_MASTER
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
@@ -34,7 +42,6 @@ services:
     volumes:
       - ./data/redis-master:/data
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
       backend:
@@ -47,6 +54,7 @@ services:
 
   # Redis Replica (Slave)
   redis-replica:
+    <<: *default-service
     container_name: REDIS_REPLICA
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
@@ -55,7 +63,6 @@ services:
     depends_on:
       - redis-master
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     command: [ "sh", "-c", "redis-server --replicaof redis-master 6379" ]
     volumes:
@@ -71,14 +78,14 @@ services:
 
   # RedisInsight Client
   redis-client:
+    <<: *default-service
     container_name: REDIS_INSIGHT
     image: redis/redisinsight:latest
     restart: always
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - REDIS_INSIGHT_REDIS_HOST=redis-server
     ports:
-      - "${RI_PORT:-5540}:5540"
+      - "${REDIS_INSIGHT_PORT:-5540}:5540"
     volumes:
       - ./data/redis-insight:/data
     networks:
@@ -91,14 +98,14 @@ services:
 
   # RedisInsight Client
   redis-replication-client:
+    <<: *default-service
     container_name: REDIS_REPLICATION_INSIGHT
     image: redis/redisinsight:latest
     restart: always
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - REDIS_INSIGHT_REDIS_HOST=redis-master
     ports:
-      - "${RI_PORT:-5540}:5540"
+      - "${REDIS_INSIGHT_PORT:-5540}:5540"
     volumes:
       - ./data/redis-replication-insight:/data
     networks:

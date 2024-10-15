@@ -34,7 +34,6 @@ fi
 source "$directory/docker/utilities/main"
 
 check_required_commands "docker" "readlink"
-assign_permissions
 check_file_existence "/.env"
 ensure_files_exist \
   "/docker/.env" \
@@ -62,6 +61,9 @@ reboot | restart)
   ;;
 rebuild)
   docker_compose down && docker_compose build --no-cache --pull "${@:2}"
+  ;;
+config)
+  docker_compose config
   ;;
 http)
   if [ "$2" = reload ]; then

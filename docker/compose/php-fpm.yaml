@@ -11,10 +11,12 @@ x-php-service: &php-service
       WORKING_DIR: ${WORKING_DIR}
   restart: always
   environment:
-    - TZ=${TZ:-Asia/Dhaka}
+    - TZ=${TZ:-}
   env_file:
     - "./.env"
   volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
     - "${PROJECT_DIR:-./../application}:/app"
     - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
     - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf

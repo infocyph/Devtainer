@@ -1,6 +1,14 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   # MySQL Single Instance
   mysql-single:
+    <<: *default-service
     container_name: MYSQL_SINGLE
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
@@ -13,7 +21,6 @@ services:
       - MYSQL_USER=${MYSQL_USER:-devuser}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-12345}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-localdb}
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./data/mysql:/var/lib/mysql
       - ./logs/mysql:/var/log/mysql
@@ -28,6 +35,7 @@ services:
 
   # MySQL Master (Primary)
   mysql-master:
+    <<: *default-service
     container_name: MYSQL_MASTER
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
@@ -42,7 +50,6 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE:-localdb}
       - MYSQL_REPLICATION_USER=${MYSQL_REPLICATION_USER:-replicauser}
       - MYSQL_REPLICATION_PASSWORD=${MYSQL_REPLICATION_PASSWORD:-replpassword}
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./data/mysql-master:/var/lib/mysql
       - ./logs/mysql:/var/log/mysql
@@ -60,6 +67,7 @@ services:
 
   # MySQL Slave (Replica)
   mysql-slave:
+    <<: *default-service
     container_name: MYSQL_SLAVE
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
@@ -72,7 +80,6 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE:-localdb}
       - MYSQL_REPLICATION_USER=${MYSQL_REPLICATION_USER:-replicauser}
       - MYSQL_REPLICATION_PASSWORD=${MYSQL_REPLICATION_PASSWORD:-replpassword}
-      - TZ=${TZ:-Asia/Dhaka}
     volumes:
       - ./data/mysql-slave:/var/lib/mysql
       - ./logs/mysql:/var/log/mysql
@@ -98,15 +105,15 @@ services:
 
   # DBeaver (CloudBeaver) Client for Single MySQL Instance
   mysql-client:
+    <<: *default-service
     container_name: MYSQL_CLIENT
     image: dbeaver/cloudbeaver:latest
     restart: always
     ports:
       - "${DBEAVER_PORT:-8080}:8978"  # DBeaver CloudBeaver uses port 8978 by default
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
-      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
-      - CB_ADMIN_PASSWORD=admin
+      - CB_ADMIN_LOGIN=${MYSQL_CLIENT_USER:-admin}
+      - CB_ADMIN_PASSWORD=${MYSQL_CLIENT_PASSWORD:-admin}
       - CB_DB_DRIVER=mysql  # Specify MySQL as the driver
       - CB_DB_HOST=mysql-single  # Directly connect to MySQL single instance
       - CB_DB_PORT=${MYSQL_PORT:-3306}
@@ -125,15 +132,15 @@ services:
 
   # DBeaver (CloudBeaver) Client for MySQL Replication
   mysql-replication-client:
+    <<: *default-service
     container_name: MYSQL_REPLICATION_CLIENT
     image: dbeaver/cloudbeaver:latest
     restart: always
     ports:
       - "${DBEAVER_PORT_REPLICATION:-8081}:8978"  # Using a different port for replication
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
-      - CB_ADMIN_LOGIN=admin  # Default login credentials for CloudBeaver
-      - CB_ADMIN_PASSWORD=admin
+      - CB_ADMIN_LOGIN=${MYSQL_CLIENT_USER:-admin}
+      - CB_ADMIN_PASSWORD=${MYSQL_CLIENT_PASSWORD:-admin}
       - CB_DB_DRIVER=mysql  # Specify MySQL as the driver
       - CB_DB_HOST=mysql-master  # Directly connect to the MySQL master for replication
       - CB_DB_PORT=${MYSQL_PORT:-3306}

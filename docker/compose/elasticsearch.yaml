@@ -1,6 +1,14 @@
+x-base-service: &default-service
+  environment:
+    - TZ=${TZ:-}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
 services:
   # Single-Node Elasticsearch
   elasticsearch-server:
+    <<: *default-service
     container_name: ELASTICSEARCH_SINGLE_NODE
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
     profiles:
@@ -9,7 +17,6 @@ services:
     ports:
       - "${ELASTICSEARCH_PORT:-9200}:9200"
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - "discovery.type=single-node"  # Single-node configuration
       - "xpack.security.enabled=false"
       - "cluster.name=single_node_cluster"
@@ -27,13 +34,13 @@ services:
 
   # Clustered Elasticsearch Node 1
   elasticsearch-cluster-node1:
+    <<: *default-service
     container_name: ELASTICSEARCH_CLUSTER_NODE1
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
     profiles:
       - elasticsearch-cluster
     restart: always
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - "discovery.seed_hosts=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
       - "cluster.initial_master_nodes=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
       - "cluster.routing.allocation.awareness.attributes=rack_id"
@@ -55,13 +62,13 @@ services:
 
   # Clustered Elasticsearch Node 2
   elasticsearch-cluster-node2:
+    <<: *default-service
     container_name: ELASTICSEARCH_CLUSTER_NODE2
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.12.2}
     profiles:
       - elasticsearch-cluster
     restart: always
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - "discovery.seed_hosts=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
       - "cluster.initial_master_nodes=elasticsearch-cluster-node1,elasticsearch-cluster-node2"
       - "cluster.routing.allocation.awareness.attributes=rack_id"
@@ -83,13 +90,13 @@ services:
 
   # Kibana Client
   elasticsearch-client:
+    <<: *default-service
     container_name: KIBANA
     image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
     restart: always
     ports:
       - "${KIBANA_PORT:-5601}:5601"
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - "ELASTICSEARCH_HOSTS=http://elasticsearch-server:9200"
     depends_on:
       - elasticsearch-server
@@ -110,13 +117,13 @@ services:
 
   # Kibana Client
   elasticsearch-cluster-client:
+    <<: *default-service
     container_name: KIBANA_CLUSTER
     image: kibana:${ELASTICSEARCH_VERSION:-8.12.2}
     restart: always
     ports:
       - "${KIBANA_PORT:-5601}:5601"
     environment:
-      - TZ=${TZ:-Asia/Dhaka}
       - "ELASTICSEARCH_HOSTS=http://elasticsearch-cluster-node1:9200"
     depends_on:
       - elasticsearch-cluster-node1
