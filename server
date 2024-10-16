@@ -71,9 +71,9 @@ case "$1" in
       reload_http_containers
     fi
     ;;
-  cli)
+  core)
     if [ -z "$2" ]; then
-      echo -e "${RED}Please provide a domain (e.g., ./server cli test.com).${NC}"
+      echo -e "${RED}Please provide a domain (e.g., ./server core test.com).${NC}"
       exit 1
     fi
     domain="$2"
@@ -111,9 +111,6 @@ case "$1" in
 
     # Execute into PHP container and change directory
     docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/bash"
-    ;;
-  core)
-    docker exec -it Core bash -c "sudo -u devuser /bin/bash"
     ;;
   tools)
     docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
