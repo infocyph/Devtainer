@@ -10,6 +10,7 @@ services:
   mongo-server:
     <<: *default-service
     container_name: MONGODB_SINGLE_NODE
+    hostname: mongodb
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb
@@ -22,8 +23,7 @@ services:
     volumes:
       - ./data/mongo:/data/db
     networks:
-      backend:
-        ipv4_address: 172.23.3.1  # Static IP for MongoDB Single Node
+      - backend
     healthcheck:
       test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
       interval: 30s
@@ -34,6 +34,7 @@ services:
   mongo-primary:
     <<: *default-service
     container_name: MONGODB_PRIMARY
+    hostname: mongodb-primary
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
@@ -49,8 +50,7 @@ services:
       - ./docker/conf/docker-files/scripts/mongo-replica:/scripts/init-replica.sh
     command: "--replSet rs0"
     networks:
-      backend:
-        ipv4_address: 172.23.3.2  # Static IP for MongoDB Primary
+      - backend
     healthcheck:
       test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
       interval: 30s
@@ -62,6 +62,7 @@ services:
   mongo-secondary1:
     <<: *default-service
     container_name: MONGODB_SECONDARY_1
+    hostname: mongodb-secondary1
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
@@ -76,13 +77,13 @@ services:
     depends_on:
       - mongo-primary
     networks:
-      backend:
-        ipv4_address: 172.23.3.3  # Static IP for MongoDB Secondary 1
+      - backend
 
   # MongoDB Secondary 2
   mongo-secondary2:
     <<: *default-service
     container_name: MONGODB_SECONDARY_2
+    hostname: mongodb-secondary2
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
@@ -97,13 +98,13 @@ services:
     depends_on:
       - mongo-primary
     networks:
-      backend:
-        ipv4_address: 172.23.3.4  # Static IP for MongoDB Secondary 2
+      - backend
 
   # Mongo Express Client
   mongo-client:
     <<: *default-service
     container_name: MONGO_ADMIN
+    hostname: mongodb-client
     image: mongo-express:${MONGO_EXPRESS_VERSION:-latest}
     restart: always
     ports:
@@ -117,10 +118,8 @@ services:
       - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
       - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-server:${MONGODB_PORT:-27017}/
     networks:
-      frontend:
-        ipv4_address: 172.22.3.1  # Static IP for Mongo Express
-      backend:
-        ipv4_address: 172.23.3.100  # Static IP for Mongo Express on Backend
+      - frontend
+      - backend
     profiles:
       - mongodb
 
@@ -128,6 +127,7 @@ services:
   mongo-replica-client:
     <<: *default-service
     container_name: MONGO_REPLICA_ADMIN
+    hostname: mongodb-replica-client
     image: mongo-express:${MONGO_EXPRESS_VERSION:-latest}
     restart: always
     ports:
@@ -139,9 +139,7 @@ services:
       - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
       - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongo-primary:${MONGODB_PORT:-27017}/?replicaSet=rs0
     networks:
-      frontend:
-        ipv4_address: 172.22.3.2  # Static IP for Mongo Express
-      backend:
-        ipv4_address: 172.23.3.101  # Static IP for Mongo Express on Backend
+      - frontend
+      - backend
     profiles:
       - mongo-replica-client

@@ -17,8 +17,7 @@ declare -A client_profiles
 # Populate services and their corresponding profiles
 services_and_profiles=(
     ["ELASTICSEARCH"]="elasticsearch elasticsearch-cluster"
-    ["MARIADB"]="mariadb mariadb-replication"
-    ["MYSQL"]="mysql mysql-replication"
+    ["MYSQL/MARIADB"]="mariadb mysql mariadb-replication mysql-replication"
     ["MONGO"]="mongodb mongodb-replica"
     ["REDIS"]="redis redis-replication"
     ["PSQL"]="postgresql postgresql-replication"

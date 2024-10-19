@@ -9,9 +9,10 @@ services:
   certbot:
     <<: *default-service
     build:
-      context: docker/conf/docker-files
+      context: ../conf/docker-files
       dockerfile: certbot.Dockerfile
     container_name: CERTIFICATE_BOT
+    hostname: certbot
     profiles:
       - certbot
     restart: always
@@ -21,27 +22,23 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: [ "/bin/bash", "/usr/local/bin/certbot-renew" ]
     networks:
-      cert:
-        ipv4_address: 172.21.0.1  # Static IP for Certbot
+      - cert
 
   server-tools:
     <<: *default-service
     container_name: SERVER_TOOLS
+    hostname: server-tools
     build:
-      context: docker/conf/docker-files
+      context: ../conf/docker-files
       dockerfile: tools.Dockerfile
       args:
         UID: ${UID:-1000}
-    profiles:
-      - tools
+        GID: ${GID:-root}
     restart: always
     volumes:
       - ./configuration/ssl:/etc/ssl/custom
       - ./configuration/ssh:/home/devuser/.ssh
       - "${PROJECT_DIR:-./../application}:/app"
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker/compose:/mount/compose
-      - ./docker/asset:/mount/asset
     networks:
-      backend:
-        ipv4_address: 172.23.0.1  # Static IP for Server Tools
+      - backend

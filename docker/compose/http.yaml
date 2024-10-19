@@ -9,6 +9,7 @@ services:
   nginx:
     <<: *default-service
     container_name: NGINX
+    hostname: nginx
     image: nginx:${NGINX_VERSION:-latest}
     profiles:
       - nginx
@@ -24,10 +25,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      frontend:
-        ipv4_address: 172.22.2.1  # Static IP for Nginx on Frontend
-      cert:
-        ipv4_address: 172.21.2.1  # Static IP for Nginx on Cert Network
+      - frontend
+      - cert
     command: [ "/bin/sh", "-c", "nginx -g 'daemon off;'" ]
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
@@ -38,8 +37,9 @@ services:
   apache:
     <<: *default-service
     container_name: APACHE
+    hostname: apache
     build:
-      context: docker/conf/docker-files
+      context: ../conf/docker-files
       dockerfile: apache.Dockerfile
       args:
         APACHE_VERSION: ${APACHE_VERSION:-latest}
@@ -57,10 +57,8 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks:
-      frontend:
-        ipv4_address: 172.22.2.2  # Static IP for Apache on Frontend
-      cert:
-        ipv4_address: 172.21.2.2  # Static IP for Apache on Cert Network
+      - frontend
+      - cert
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
       interval: 30s

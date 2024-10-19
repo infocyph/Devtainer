@@ -10,6 +10,7 @@ services:
   redis-server:
     <<: *default-service
     container_name: REDIS
+    hostname: redis
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis
@@ -21,8 +22,7 @@ services:
     environment:
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
-      backend:
-        ipv4_address: 172.23.8.1  # Static IP for Redis Single Instance
+      - backend
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
@@ -33,6 +33,7 @@ services:
   redis-master:
     <<: *default-service
     container_name: REDIS_MASTER
+    hostname: redis-master
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis-replication
@@ -44,8 +45,7 @@ services:
     environment:
       - REDIS_ARGS="--save 10 1 --appendonly yes"
     networks:
-      backend:
-        ipv4_address: 172.23.8.2  # Static IP for Redis Master
+      - backend
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
@@ -56,6 +56,7 @@ services:
   redis-replica:
     <<: *default-service
     container_name: REDIS_REPLICA
+    hostname: redis-replica
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis-replication
@@ -68,8 +69,7 @@ services:
     volumes:
       - ./data/redis-replica:/data
     networks:
-      backend:
-        ipv4_address: 172.23.8.3  # Static IP for Redis Replica
+      - backend
     healthcheck:
       test: [ "CMD", "redis-cli", "-h", "redis-master", "ping" ]
       interval: 30s
@@ -80,6 +80,7 @@ services:
   redis-client:
     <<: *default-service
     container_name: REDIS_INSIGHT
+    hostname: redis-insight
     image: redis/redisinsight:latest
     restart: always
     environment:
@@ -89,10 +90,8 @@ services:
     volumes:
       - ./data/redis-insight:/data
     networks:
-      frontend:
-        ipv4_address: 172.22.8.1  # Static IP for RedisInsight on Frontend
-      backend:
-        ipv4_address: 172.23.8.100  # Static IP for RedisInsight on Backend
+      - frontend
+      - backend
     profiles:
       - redis-client
 
@@ -100,6 +99,7 @@ services:
   redis-replication-client:
     <<: *default-service
     container_name: REDIS_REPLICATION_INSIGHT
+    hostname: redis-replication-insight
     image: redis/redisinsight:latest
     restart: always
     environment:
@@ -109,9 +109,7 @@ services:
     volumes:
       - ./data/redis-replication-insight:/data
     networks:
-      frontend:
-        ipv4_address: 172.22.8.2  # Static IP for RedisInsight on Frontend
-      backend:
-        ipv4_address: 172.23.8.101  # Static IP for RedisInsight on Backend
+      - frontend
+      - backend
     profiles:
       - redis-replication-client

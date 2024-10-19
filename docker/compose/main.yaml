@@ -4,21 +4,12 @@ networks:
   cert:
     name: Certificate
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.21.0.0/16
   frontend:
     name: Frontend
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.22.0.0/16
   backend:
     name: Backend
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.23.0.0/16
 
 include:
   - docker/compose/http.yaml

@@ -110,7 +110,7 @@ case "$1" in
     echo -e "${GREEN}Launching into $php_container's bash panel and cd'ing to /app$doc_root...${NC}"
 
     # Execute into PHP container and change directory
-    docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/bash"
+    docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/zsh"
     ;;
   tools)
     docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"

@@ -46,14 +46,25 @@ ARG UID=1000
 ARG GID=root
 
 RUN set -eux; \
-    apt update && \
-    useradd -G ${GID} -u ${UID} -d /home/devuser devuser && \
-    apt install --no-install-recommends -y sudo && \
-    mkdir -p /home/devuser/.composer && \
+    UID_MIN=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}') && \
+    UID_MAX=$(grep "^UID_MAX" /etc/login.defs | awk '{print $2}') && \
+    if [ "$UID" -lt "$UID_MIN" ] || [ "$UID" -gt "$UID_MAX" ]; then \
+        echo "UID is out of range ($UID_MIN-$UID_MAX), setting to default: 1000"; \
+        UPDATED_UID=1000; \
+    else \
+        UPDATED_UID=$UID; \
+    fi && \
+    useradd -G ${GID} -u ${UPDATED_UID} -d /home/devuser devuser && \
+    apt update && apt install --no-install-recommends -y sudo && \
+    mkdir -p /home/devuser/.composer/vendor && \
     chown -R devuser:devuser /home/devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devuser && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Switch to the non-root user and set the working directory
 USER devuser
+RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
+    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
+    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/devuser/.bashrc"
 WORKDIR /app

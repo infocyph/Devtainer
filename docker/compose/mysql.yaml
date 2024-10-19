@@ -10,6 +10,7 @@ services:
   mysql-single:
     <<: *default-service
     container_name: MYSQL_SINGLE
+    hostname: mysql
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql
@@ -25,10 +26,9 @@ services:
       - ./data/mysql:/var/lib/mysql
       - ./logs/mysql:/var/log/mysql
     networks:
-      backend:
-        ipv4_address: 172.23.4.1  # Static IP for MySQL Single Instance
+      - backend
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,6 +37,7 @@ services:
   mysql-master:
     <<: *default-service
     container_name: MYSQL_MASTER
+    hostname: mysql-master
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql-replication
@@ -54,10 +55,9 @@ services:
       - ./data/mysql-master:/var/lib/mysql
       - ./logs/mysql:/var/log/mysql
     networks:
-      backend:
-        ipv4_address: 172.23.4.3  # Static IP for MySQL Master
+      - backend
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -69,6 +69,7 @@ services:
   mysql-slave:
     <<: *default-service
     container_name: MYSQL_SLAVE
+    hostname: mysql-slave
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql-replication
@@ -89,24 +90,25 @@ services:
     depends_on:
       - mysql-master
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       interval: 30s
       timeout: 10s
       retries: 3
     command:
       --server-id=2
     entrypoint: [ "sh", "-c", "
-      mysql -u root -p${MYSQL_ROOT_PASSWORD} -e \"
+      mysql -u root -p${MYSQL_ROOT_PASSWORD:-12345} -e \"
         STOP SLAVE;
-        CHANGE MASTER TO MASTER_HOST='mysql-master', MASTER_USER='${MYSQL_REPLICATION_USER}', MASTER_PASSWORD='${MYSQL_REPLICATION_PASSWORD}', MASTER_LOG_FILE='mysql-bin.000001', MASTER_LOG_POS=0;
+        CHANGE MASTER TO MASTER_HOST='mysql-master', MASTER_USER='${MYSQL_REPLICATION_USER:-replicauser}', MASTER_PASSWORD='${MYSQL_REPLICATION_PASSWORD:-replpassword}', MASTER_LOG_FILE='mysql-bin.000001', MASTER_LOG_POS=0;
         START SLAVE;
       \"
-    "]
+    " ]
 
   # DBeaver (CloudBeaver) Client for Single MySQL Instance
   mysql-client:
     <<: *default-service
     container_name: MYSQL_CLIENT
+    hostname: mysql-client
     image: dbeaver/cloudbeaver:latest
     restart: always
     ports:
@@ -123,10 +125,8 @@ services:
     volumes:
       - ./data/dbeaver-mysql:/opt/cloudbeaver/workspace  # DBeaver workspace volume
     networks:
-      frontend:
-        ipv4_address: 172.22.4.1  # Static IP for DBeaver on Frontend network
-      backend:
-        ipv4_address: 172.23.4.100  # Static IP for DBeaver on Backend network
+      - frontend
+      - backend
     profiles:
       - mysql-client
 
@@ -134,6 +134,7 @@ services:
   mysql-replication-client:
     <<: *default-service
     container_name: MYSQL_REPLICATION_CLIENT
+    hostname: mysql-replication-client
     image: dbeaver/cloudbeaver:latest
     restart: always
     ports:
@@ -150,9 +151,7 @@ services:
     volumes:
       - ./data/dbeaver-replication-mysql:/opt/cloudbeaver/workspace  # Separate workspace for replication
     networks:
-      frontend:
-        ipv4_address: 172.22.4.2  # Static IP for DBeaver on Frontend network
-      backend:
-        ipv4_address: 172.23.4.101  # Static IP for DBeaver on Backend network
+      - frontend
+      - backend
     profiles:
       - mysql-replication-client
