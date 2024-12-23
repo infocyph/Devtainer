@@ -19,7 +19,7 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
@@ -37,9 +37,9 @@ RUN set -eux; \
         NODE_VERSION_TO_INSTALL="${NODE_VERSION_VERSIONED:-$NODE_VERSION}"; \
         curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION_TO_INSTALL}.x | bash - && \
         apt install --no-install-recommends -y nodejs && \
-        npm i -g npm@latest; \
-    fi && \
-    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+        npm i -g npm@latest && \
+        apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*; \
+    fi
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -49,7 +49,7 @@ RUN set -eux; \
     UID_MIN=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}') && \
     UID_MAX=$(grep "^UID_MAX" /etc/login.defs | awk '{print $2}') && \
     if [ "$UID" -lt "$UID_MIN" ] || [ "$UID" -gt "$UID_MAX" ]; then \
-        echo "UID is out of range ($UID_MIN-$UID_MAX), setting to default: 1000"; \
+        echo "UID($UID) is out of range ($UID_MIN-$UID_MAX), setting to default: 1000"; \
         UPDATED_UID=1000; \
     else \
         UPDATED_UID=$UID; \
