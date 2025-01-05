@@ -75,7 +75,9 @@ copy_files() {
 
 # Wrapper for docker compose command
 docker_compose() {
-  docker compose --project-directory "$directory" -f "$directory/docker/compose/main.yaml" --env-file "$directory/docker/.env" "$@"
+  docker compose --project-directory "$directory" \
+    -f "$directory/docker/compose/main.yaml" \
+    --env-file "$directory/docker/.env" "$@"
 }
 
 # Function to find PHP version and DOC_ROOT from config file

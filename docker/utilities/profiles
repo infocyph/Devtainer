@@ -101,9 +101,9 @@ prompt_common_vars() {
     echo -e "${CYAN}GID = $GID${NC}"
 
     # Write common variables to the .env file
-    update_env "/docker/.env" "TZ" "$TZ"
-    update_env "/docker/.env" "UID" "$USER_UID"
-    update_env "/docker/.env" "GID" "$GID"
+    update_env "$directory/docker/.env" "TZ" "$TZ"
+    update_env "$directory/docker/.env" "UID" "$USER_UID"
+    update_env "$directory/docker/.env" "GID" "$GID"
 }
 
 # Function to process each service
@@ -131,7 +131,7 @@ process_service() {
     local selected_profile=${profile_choice[$profile_number]}
 
     echo -e "${GREEN}Selected profile: $selected_profile${NC}"
-    modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "$selected_profile"
+    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$selected_profile"
     # Handle environment variables for the selected profile
     IFS=" " read -r -a env_vars <<<"${profile_env_vars[$selected_profile]}"
 
@@ -143,7 +143,7 @@ process_service() {
         echo -e "${GREEN}Setting $key = $input_value${NC}"
 
         # Write to .env file
-        update_env "/docker/.env" "$key" "$input_value"
+        update_env "$directory/docker/.env" "$key" "$input_value"
     done
 
     # Check if there's a client profile associated with this service
@@ -163,7 +163,7 @@ process_service() {
                 echo -e "${GREEN}Setting $key = $client_input_value${NC}"
 
                 # Write to .env file
-                update_env "/docker/.env" "$key" "$client_input_value"
+                update_env "$directory/docker/.env" "$key" "$client_input_value"
             done
         else
             echo -e "${RED}Skipping client for $service_name.${NC}"

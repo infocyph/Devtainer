@@ -1,28 +1,18 @@
 x-php-cli-service: &php-cli-service
-  build:
-    context: ../conf/docker-files
-    dockerfile: cli.Dockerfile
-    args:
-      UID: ${UID:-1000}
-      GID: ${GID:-root}
-      PHP_EXT: ${PHP_EXT:-}
-      LINUX_PKG: ${LINUX_PKG:-}
-      WORKING_DIR: ${WORKING_DIR}
   restart: always
-  networks:
-    - backend
   environment:
     - TZ=${TZ:-}
   env_file:
-    - "./.env"
+    - "../../.env"
+  networks:
+    - backend
   volumes:
     - /etc/localtime:/etc/localtime:ro
     - /etc/timezone:/etc/timezone:ro
-    - "${PROJECT_DIR:-./../application}:/app"
-    - ./configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-    - ./docker/conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-    - ./docker/conf/php/openssl.cnf:/etc/ssl/openssl.cnf
-    - ./configuration/ssh:/home/devuser/.ssh
+    - "${PROJECT_DIR:-./../../../application}:/app"
+    - "../conf/php/openssl.cnf:/etc/ssl/openssl.cnf"
+    - "../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini"
+    - "../../configuration/ssh:/home/devuser/.ssh"
   extra_hosts:
     - "host.docker.internal:host-gateway"
 
@@ -32,7 +22,14 @@ services:
     container_name: PHP_7.4_CLI
     hostname: php-74-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 7.4
         PHP_EXT_VERSIONED: ${PHP_EXT_74:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_74:-}
@@ -45,7 +42,15 @@ services:
     container_name: PHP_8.0_CLI
     hostname: php-80-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 8.0
         PHP_EXT_VERSIONED: ${PHP_EXT_80:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_80:-}
@@ -58,7 +63,15 @@ services:
     container_name: PHP_8.1_CLI
     hostname: php-81-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 8.1
         PHP_EXT_VERSIONED: ${PHP_EXT_81:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_81:-}
@@ -71,7 +84,15 @@ services:
     container_name: PHP_8.2_CLI
     hostname: php-82-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 8.2
         PHP_EXT_VERSIONED: ${PHP_EXT_82:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_82:-}
@@ -84,7 +105,15 @@ services:
     container_name: PHP_8.3_CLI
     hostname: php-83-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 8.3
         PHP_EXT_VERSIONED: ${PHP_EXT_83:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_83:-}
@@ -97,7 +126,15 @@ services:
     container_name: PHP_8.4_CLI
     hostname: php-84-cli
     build:
+      context: "../conf/docker-files"
+      dockerfile: cli.Dockerfile
       args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
         PHP_VERSION: 8.4
         PHP_EXT_VERSIONED: ${PHP_EXT_84:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_84:-}

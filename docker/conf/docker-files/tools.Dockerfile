@@ -2,10 +2,11 @@ FROM debian:latest
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git wget ca-certificates fzf autojump bash-completion && \
+    apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates fzf autojump bash-completion && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Set environment for Composer
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
 # Install mkcert
@@ -13,7 +14,7 @@ RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
     chmod +x mkcert-v*-linux-amd64 && \
     cp mkcert-v*-linux-amd64 /usr/local/bin/mkcert && \
     rm -f mkcert-v*-linux-amd64 && \
-    mkdir -p /etc/ssl/custom
+    mkdir -p /etc/mkcert/localhost
 
 # lazydocker
 ENV DIR=/usr/local/bin
@@ -35,9 +36,11 @@ RUN set -eux; \
     useradd -G ${GID} -u ${UPDATED_UID} -d /home/devuser devuser && \
     apt update && apt install --no-install-recommends -y sudo && \
     mkdir -p /home/devuser/.composer/vendor && \
+    mkdir -p /home/devuser/.local/share/mkcert && \
     chown -R devuser:devuser /home/devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devuser && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+RUN bash -c "mkcert -cert-file \"/etc/mkcert/localhost/fullchain.pem\" -key-file \"/etc/mkcert/localhost/privkey.pem\" \"localhost\""
 
 
 #ENV COMPOSER_HOME=/home/devuser/.composer
@@ -47,8 +50,17 @@ RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/ma
     sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
     sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
     sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/devuser/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/devuser/.bashrc"
+    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/devuser/.bashrc && \
+    echo 'alias cert=\"mkcert -cert-file \"/etc/mkcert/\$1/fullchain.pem\" -key-file \"/etc/mkcert/\$1/privkey.pem\" \"\$1\" \"*.\$1\"\"' >> /home/devuser/.bashrc && \
+    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/devuser/.bashrc && \
+    echo ' _                    _ ____             _    ' >> /home/devuser/.bashrc && \
+    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/devuser/.bashrc && \
+    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/devuser/.bashrc && \
+    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/devuser/.bashrc && \
+    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/devuser/.bashrc && \
+    echo '----------------------------------------------' >> /home/devuser/.bashrc && \
+    echo '          Brought to you by: Infocyph' >> /home/devuser/.bashrc && \
+    echo 'EOF' >> /home/devuser/.bashrc"
 WORKDIR /app
 
-# Default command to keep the container running
 CMD ["tail", "-f", "/dev/null"]

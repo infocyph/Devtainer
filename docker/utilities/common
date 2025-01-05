@@ -25,22 +25,34 @@ check_required_commands() {
   done
 }
 update_env() {
-  local env_file="${directory}$1" # Prepend $directory to the provided env_file path
+  local env_file="$1"
   local var_name="$2"
   local var_value="$3"
 
-  if grep -qF "${var_name}=" "$env_file"; then
-    local existing="$(grep "${var_name}=" "$env_file" | cut -d '=' -f 2)"
-    if [ -z "$existing" ]; then
-      sed -i "s|${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-    fi
+  # Ensure the .env file exists
+  if [[ ! -f "$env_file" ]]; then
+    echo "Error: File '$env_file' not found."
+    return 1
+  fi
+
+  # Escape special characters in the variable name for sed only
+  local escaped_var_name=$(echo "$var_name" | sed 's/[]\/$*.^|[]/\\&/g')
+  if grep -qE "^[# ]*${escaped_var_name}=" "$env_file"; then
+    sed -i -E "s|^[# ]*(${escaped_var_name}=).*|\1${var_value}|" "$env_file"
   else
-    echo -e "${var_name}=${var_value}" >>"$env_file"
+    echo "${var_name}=${var_value}" >>"$env_file"
   fi
 }
+
+
 # Function to assign the correct permissions
 assign_permissions() {
   if [[ "$(uname -s)" == *NT* || "$(uname -o)" == *Msys* || "$(uname -o)" == *Cygwin* ]]; then
+    return
+  fi
+
+  if [[ "$EUID" -ne 0 ]]; then
+    echo -e "${RED}Please run the script with sudo.${NC}"
     return
   fi
 
@@ -59,7 +71,7 @@ assign_permissions() {
     chmod 755 "$directory/docker/"
   fi
   find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
-  find "$directory/docker/conf/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
+  find "$directory/docker/conf/docker-files/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
 
   if [ "$(stat -c "%a" "$directory/data/")" != "775" ]; then
     chmod 775 "$directory/data/"

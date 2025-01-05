@@ -41,7 +41,7 @@ ensure_files_exist \
   "/configuration/php/php.ini" \
   "/configuration/scheduler/supervisor-worker.conf" \
   "/configuration/scheduler/supervisor-logrotate"
-update_env "/docker/.env" "WORKING_DIR" "$directory"
+update_env "$directory/docker/.env" "WORKING_DIR" "$directory"
 copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
 
 # Handle provided commands

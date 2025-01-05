@@ -185,10 +185,10 @@ function create_configuration() {
     # Set configuration file path based on server type
     if [[ "$SERVER_TYPE" == "Nginx" ]]; then
         CONFIG_FILE="configuration/nginx/${DOMAIN_NAME}.conf"
-        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER}"
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER}"
     elif [[ "$SERVER_TYPE" == "Apache" ]]; then
         CONFIG_FILE="configuration/apache/${DOMAIN_NAME}.conf"
-        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "apache" "${PHP_CONTAINER}"
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "apache" "${PHP_CONTAINER}"
     else
         echo -e "${RED}Invalid server type: $SERVER_TYPE${NC}"
         return 1
@@ -196,14 +196,14 @@ function create_configuration() {
 
     # Handle redirection and HTTP configuration
     if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
-        generate_conf_from_template "$base_template_path/redirect.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
+        generate_conf_from_template "$base_template_path/redirect.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
     elif [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
-        generate_conf_from_template "$base_template_path/http.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
+        generate_conf_from_template "$base_template_path/http.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
     fi
 
     # Handle HTTPS configuration
     if [[ "$ENABLE_HTTPS" == "y" ]]; then
-        generate_conf_from_template "$base_template_path/https.$SERVER_TYPE.conf" "$directory/$CONFIG_FILE"
+        generate_conf_from_template "$base_template_path/https.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
 
         # Issue SSL certificate
         local certbot_cmd="docker exec -it CERTIFICATE_BOT certbot certonly --webroot --webroot-path=/var/www/certbot \
@@ -212,7 +212,7 @@ function create_configuration() {
             echo -e "${RED}Error issuing SSL certificate for ${DOMAIN_NAME}.${NC}"
             return 1
         fi
-        modify_compose_profiles "/docker/.env" "COMPOSE_PROFILES" "add" "certbot"
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "certbot"
     fi
 
     echo -e "\n${GREEN}Configuration for ${DOMAIN_NAME} has been saved.${NC}"
