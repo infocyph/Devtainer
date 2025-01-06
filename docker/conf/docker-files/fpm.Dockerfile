@@ -19,11 +19,12 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat boxes net-tools procps ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+RUN sed -i 's/^listen = .*/listen = 0.0.0.0:9000/' /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # Set environment
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -77,5 +78,5 @@ RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/ma
     echo '----------------------------------------------' >> /home/devuser/.bashrc && \
     echo '          Brought to you by: Infocyph' >> /home/devuser/.bashrc && \
     echo 'EOF' >> /home/devuser/.bashrc"
-
+EXPOSE 9000
 WORKDIR /app
