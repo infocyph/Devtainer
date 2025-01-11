@@ -24,5 +24,8 @@ RUN echo "IncludeOptional conf/extra/httpd-vhosts.conf" >> /usr/local/apache2/co
 # Set up document root (Mounts will be done via docker-compose)
 WORKDIR /var/www/html
 
+# Expose ports
+EXPOSE 80 443
+
 # Start Apache in the foreground
 CMD ["httpd-foreground"]

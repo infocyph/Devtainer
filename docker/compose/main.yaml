@@ -11,7 +11,7 @@ networks:
 include:
   - docker/compose/http.yaml
   - docker/compose/php-fpm.yaml
-  - docker/compose/php-cli.yaml
+#  - docker/compose/php-cli.yaml
 #  - docker/compose/mysql.yaml
 #  - docker/compose/mariadb.yaml
 #  - docker/compose/psql.yaml

@@ -2,7 +2,11 @@ services:
   nginx:
     container_name: NGINX
     hostname: nginx
-    image: nginx:${NGINX_VERSION:-latest}
+    build:
+      context: ../conf/docker-files
+      dockerfile: nginx.Dockerfile
+      args:
+        NGINX_VERSION: ${NGINX_VERSION:-latest}
     profiles:
       - nginx
     restart: always
