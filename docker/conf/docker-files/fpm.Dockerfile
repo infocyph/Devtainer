@@ -19,7 +19,7 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes net-tools procps ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \

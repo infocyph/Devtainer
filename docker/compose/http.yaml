@@ -52,7 +52,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - ../../configuration/ssl:/etc/mkcert
-      - ../../configuration/apache:/etc/apache2/sites-available
+      - ../../configuration/apache:/usr/local/apache2/conf/extra
       - ../../logs/apache:/var/log/apache2
     extra_hosts:
       - 'host.docker.internal:host-gateway'
