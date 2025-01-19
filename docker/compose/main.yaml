@@ -18,4 +18,4 @@ include:
 #  - docker/compose/mongo.yaml
 #  - docker/compose/elasticsearch.yaml
 #  - docker/compose/redis.yaml
-  - docker/compose/companion.yaml
+#  - docker/compose/companion.yaml

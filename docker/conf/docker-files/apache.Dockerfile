@@ -23,13 +23,11 @@ LoadModule rewrite_module modules/mod_rewrite.so\n\
 LoadModule ssl_module modules/mod_ssl.so\n\
 LoadModule socache_shmcb_module modules/mod_socache_shmcb.so\n\
 LoadModule headers_module modules/mod_headers.so\n\
+IncludeOptional conf/extra/*.conf\n\
 " >> /usr/local/apache2/conf/httpd.conf
 
-# Enable inclusion of custom virtual hosts
-RUN echo "IncludeOptional conf/extra/*.conf" >> /usr/local/apache2/conf/httpd.conf
-
 # Set up document root (Mounts will be done via docker-compose)
-WORKDIR /var/www/html
+WORKDIR /app
 
 # Expose ports
 EXPOSE 80 443

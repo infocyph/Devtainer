@@ -24,30 +24,6 @@ function prompt_for_domain() {
     done
 }
 
-# Function to validate email address
-function validate_email() {
-    local email=$1
-    local regex="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-
-    if [[ ! $email =~ $regex ]]; then
-        echo -e "${RED}Invalid email address:${NC} $email"
-        return 1
-    fi
-    return 0
-}
-
-# Function to prompt for email address and validate it
-function prompt_for_email() {
-    while true; do
-        read -e -r -p "$(echo -e "${CYAN}Enter the email address (e.g., admin@example.com):${NC}") " EMAIL_ADDRESS
-        if validate_email "$EMAIL_ADDRESS"; then
-            break
-        else
-            echo -e "${YELLOW}Please enter a valid email address.${NC}"
-        fi
-    done
-}
-
 # Function to prompt for server type
 function choose_server_type() {
     echo -e "${CYAN}Choose the server to configure:${NC}"
@@ -174,7 +150,6 @@ function generate_conf_from_template() {
         -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
         -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
         -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
-        -e "s|{{EMAIL_ADDRESS}}|$EMAIL_ADDRESS|g" \
         "$template_file" >> "$output_file"
 }
 
@@ -220,19 +195,17 @@ function create_configuration() {
 
 # Start the script
 function configure_server() {
-    show_step 1 7
+    show_step 1 6
     prompt_for_domain
-    show_step 2 7
-    prompt_for_email
-    show_step 3 7
+    show_step 2 6
     choose_server_type
-    show_step 4 7
+    show_step 3 6
     prompt_for_http_https
-    show_step 5 7
+    show_step 4 6
     prompt_for_doc_root
-    show_step 6 7
+    show_step 5 6
     prompt_for_client_max_body_size
-    show_step 7 7
+    show_step 6 6
     prompt_for_php_version
     create_configuration
 }

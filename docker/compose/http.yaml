@@ -21,6 +21,7 @@ services:
       - ../../logs/nginx:/var/log/nginx
       - ../../configuration/nginx:/etc/nginx/conf.d
       - ../../configuration/ssl:/etc/mkcert
+      - "${PROJECT_DIR:-./../../../application}:/app"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -54,6 +55,7 @@ services:
       - ../../configuration/ssl:/etc/mkcert
       - ../../configuration/apache:/usr/local/apache2/conf/extra
       - ../../logs/apache:/var/log/apache2
+      - "${PROJECT_DIR:-./../../../application}:/app"
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks:
