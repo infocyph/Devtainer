@@ -11,6 +11,7 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 SHELL ["/bin/bash", "-c"]
 
 # Install system packages and PHP extensions in one layer to reduce image size
+ARG USERNAME=dockery
 ARG LINUX_PKG
 ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
@@ -53,27 +54,27 @@ RUN set -eux; \
     else \
         UPDATED_UID=$UID; \
     fi && \
-    useradd -G ${GID} -u ${UPDATED_UID} -d /home/devuser devuser && \
+    useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     apt update && apt install --no-install-recommends -y sudo && \
-    mkdir -p /home/devuser/.composer/vendor && \
-    chown -R devuser:devuser /home/devuser && \
-    echo "devuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devuser && \
+    mkdir -p /home/${USERNAME}/.composer/vendor && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} && \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
-USER devuser
+USER ${USERNAME}
 RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/devuser/.bashrc && \
-    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/devuser/.bashrc && \
-    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/devuser/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/devuser/.bashrc && \
-    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/devuser/.bashrc && \
-    echo ' _                    _ ____             _    ' >> /home/devuser/.bashrc && \
-    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/devuser/.bashrc && \
-    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/devuser/.bashrc && \
-    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/devuser/.bashrc && \
-    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/devuser/.bashrc && \
-    echo '----------------------------------------------' >> /home/devuser/.bashrc && \
-    echo '          Brought to you by: Infocyph' >> /home/devuser/.bashrc && \
-    echo 'EOF' >> /home/devuser/.bashrc"
+    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/$${USERNAME}/.bashrc && \
+    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/$${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/$${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/$${USERNAME}/.bashrc && \
+    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/$${USERNAME}/.bashrc && \
+    echo ' _                    _ ____             _    ' >> /home/$${USERNAME}/.bashrc && \
+    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/$${USERNAME}/.bashrc && \
+    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/$${USERNAME}/.bashrc && \
+    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/$${USERNAME}/.bashrc && \
+    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/$${USERNAME}/.bashrc && \
+    echo '----------------------------------------------' >> /home/$${USERNAME}/.bashrc && \
+    echo '     Container: PHP ${PHP_VERSION} with Apache' >> /home/$${USERNAME}/.bashrc && \
+    echo 'EOF' >> /home/$${USERNAME}/.bashrc"
 
 WORKDIR /app
