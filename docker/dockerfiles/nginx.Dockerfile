@@ -1,7 +1,7 @@
 ARG NGINX_VERSION
 FROM nginx:${NGINX_VERSION}
 
-LABEL org.opencontainers.image.source="https://github.com/infocyph/Devtainer"
+LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
 LABEL org.opencontainers.image.description="NGINX with updated FastCGI params"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
@@ -10,10 +10,7 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 COPY scripts/fcgi-params.sh /usr/local/bin/update_fastcgi_params.sh
 
 # Set execute permissions for the script
-RUN chmod +x /usr/local/bin/update_fastcgi_params.sh
-
-# Run the script to update fastcgi_params
-RUN /usr/local/bin/update_fastcgi_params.sh
+RUN chmod +x /usr/local/bin/update_fastcgi_params.sh && /usr/local/bin/update_fastcgi_params.sh
 
 # Expose ports
 EXPOSE 80 443

@@ -2,7 +2,7 @@
 ARG PHP_VERSION=8.3
 FROM php:${PHP_VERSION}-fpm
 
-LABEL org.opencontainers.image.source="https://github.com/infocyph/Devtainer"
+LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
 LABEL org.opencontainers.image.description="PHP FPM"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
