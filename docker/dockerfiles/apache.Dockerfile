@@ -1,7 +1,7 @@
 ARG APACHE_VERSION
 FROM httpd:${APACHE_VERSION}
 
-LABEL org.opencontainers.image.source="https://github.com/infocyph/Devtainer"
+LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
 LABEL org.opencontainers.image.description="Apache"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
@@ -28,9 +28,6 @@ IncludeOptional conf/extra/*.conf\n\
 
 # Set up document root (Mounts will be done via docker-compose)
 WORKDIR /app
-
-# Expose ports
-EXPOSE 80 443
 
 # Start Apache in the foreground
 CMD ["httpd-foreground"]

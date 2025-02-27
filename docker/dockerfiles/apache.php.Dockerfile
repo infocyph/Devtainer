@@ -26,7 +26,7 @@ RUN set -eux; \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
     rm -f /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/default-ssl.conf && \
-    a2enmod rewrite ssl socache_shmcb headers && a2ensite * && \
+    a2enmod rewrite ssl socache_shmcb headers setenvif && a2ensite * && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Install Node.js and npm globally if requested
