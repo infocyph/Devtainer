@@ -5,20 +5,31 @@ RUN set -eux; \
     apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates fzf autojump bash-completion && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
+RUN apt install python3 python3-pip curl git wget net-tools libnss3-tools \
+    build-essential python3-dev libcairo2-dev libpango1.0-dev ffmpeg -y && \
+    rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED
+
 # Set environment for Composer
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
 # Install mkcert
 RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
-    chmod +x mkcert-v*-linux-amd64 && \
-    cp mkcert-v*-linux-amd64 /usr/local/bin/mkcert && \
-    rm -f mkcert-v*-linux-amd64 && \
+    mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert && \
+    chmod +x /usr/local/bin/mkcert && \
     mkdir -p /etc/mkcert/localhost
 
 # lazydocker
 ENV DIR=/usr/local/bin
 RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
+
+# git fame
+RUN pip install git-fame && git config --global alias.fame '!python3 -m gitfame' && \
+    wget -O /usr/local/bin/owners https://raw.githubusercontent.com/abmmhasan/misc-ref/main/git/owners.sh && \
+    chmod +x /usr/local/bin/owners
+
+# Git story
+RUN pip install manim gitpython git-story
 
 # Add a system user and install sudo
 ARG UID=1000
