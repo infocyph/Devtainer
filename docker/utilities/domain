@@ -195,15 +195,13 @@ function create_configuration() {
 
 # Start the script
 function configure_server() {
-    show_step 1 6
+    show_step 1 5
     prompt_for_domain
-    show_step 2 6
-    choose_server_type
-    show_step 3 6
+    show_step 2 5
     prompt_for_http_https
-    show_step 4 6
+    show_step 3 5
     prompt_for_doc_root
-    show_step 5 6
+    show_step 4 5
     prompt_for_client_max_body_size
     show_step 6 6
     prompt_for_php_version

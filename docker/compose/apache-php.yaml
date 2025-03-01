@@ -1,4 +1,4 @@
-x-php-fpm-service: &php-fpm-service
+x-apache-php-service: &apache-php-service
   restart: always
   environment:
     - TZ=${TZ:-}
@@ -18,19 +18,19 @@ x-php-fpm-service: &php-fpm-service
   extra_hosts:
     - "host.docker.internal:host-gateway"
   healthcheck:
-    test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+    test: [ "CMD", "curl", "-f", "http://localhost" ]
     interval: 30s
     timeout: 10s
     retries: 3
 
 services:
   php74:
-    <<: *php-fpm-service
-    container_name: PHP_7.4
-    hostname: php-74
+    <<: *apache-php-service
+    container_name: PHP_7.4_APACHE
+    hostname: php-74-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -47,12 +47,12 @@ services:
       - php74
 
   php80:
-    <<: *php-fpm-service
-    container_name: PHP_8.0
-    hostname: php-80
+    <<: *apache-php-service
+    container_name: PHP_8.0_APACHE
+    hostname: php-80-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -69,12 +69,12 @@ services:
       - php80
 
   php81:
-    <<: *php-fpm-service
-    container_name: PHP_8.1
-    hostname: php-81
+    <<: *apache-php-service
+    container_name: PHP_8.1_APACHE
+    hostname: php-81-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -91,12 +91,12 @@ services:
       - php81
 
   php82:
-    <<: *php-fpm-service
-    container_name: PHP_8.2
-    hostname: php-82
+    <<: *apache-php-service
+    container_name: PHP_8.2_APACHE
+    hostname: php-82-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -113,12 +113,12 @@ services:
       - php82
 
   php83:
-    <<: *php-fpm-service
-    container_name: PHP_8.3
-    hostname: php-83
+    <<: *apache-php-service
+    container_name: PHP_8.3_APACHE
+    hostname: php-83-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -135,12 +135,12 @@ services:
       - php83
 
   php84:
-    <<: *php-fpm-service
-    container_name: PHP_8.4
-    hostname: php-84
+    <<: *apache-php-service
+    container_name: PHP_8.4_APACHE
+    hostname: php-84-apache
     build:
       context: ../dockerfiles
-      dockerfile: fpm.Dockerfile
+      dockerfile: apache.php.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}

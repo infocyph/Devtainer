@@ -3,7 +3,7 @@ services:
     container_name: NGINX
     hostname: nginx
     build:
-      context: ../conf/docker-files
+      context: ../dockerfiles
       dockerfile: nginx.Dockerfile
       args:
         NGINX_VERSION: ${NGINX_VERSION:-latest}
@@ -16,8 +16,8 @@ services:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
       - ../../logs/nginx:/var/log/nginx
       - ../../configuration/nginx:/etc/nginx/conf.d
       - ../../configuration/ssl:/etc/mkcert
@@ -27,39 +27,6 @@ services:
     networks:
       - frontend
     command: [ "/bin/sh", "-c", "nginx -g 'daemon off;'" ]
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  apache:
-    container_name: APACHE
-    hostname: apache
-    build:
-      context: ../conf/docker-files
-      dockerfile: apache.Dockerfile
-      args:
-        APACHE_VERSION: ${APACHE_VERSION:-latest}
-    profiles:
-      - apache
-    restart: always
-    environment:
-      - TZ=${TZ:-}
-    ports:
-      - "${APACHE_HTTP_PORT:-80}:80"
-      - "${APACHE_HTTPS_PORT:-443}:443"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - ../../configuration/ssl:/etc/mkcert
-      - ../../configuration/apache:/usr/local/apache2/conf/extra
-      - ../../logs/apache:/var/log/apache2
-      - "${PROJECT_DIR:-./../../../application}:/app"
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    networks:
-      - frontend
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
       interval: 30s

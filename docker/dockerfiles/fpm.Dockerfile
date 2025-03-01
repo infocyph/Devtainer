@@ -61,18 +61,18 @@ RUN set -eux; \
 
 USER ${USERNAME}
 RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/$${USERNAME}/.bashrc && \
-    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/$${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/$${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/$${USERNAME}/.bashrc && \
-    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/$${USERNAME}/.bashrc && \
-    echo ' _                    _ ____             _    ' >> /home/$${USERNAME}/.bashrc && \
-    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/$${USERNAME}/.bashrc && \
-    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/$${USERNAME}/.bashrc && \
-    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/$${USERNAME}/.bashrc && \
-    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/$${USERNAME}/.bashrc && \
-    echo '----------------------------------------------' >> /home/$${USERNAME}/.bashrc && \
-    echo '          Brought to you by: Infocyph' >> /home/$${USERNAME}/.bashrc && \
-    echo 'EOF' >> /home/$${USERNAME}/.bashrc"
+    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
+    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/${USERNAME}/.bashrc && \
+    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/${USERNAME}/.bashrc && \
+    echo ' _                    _ ____             _    ' >> /home/${USERNAME}/.bashrc && \
+    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/${USERNAME}/.bashrc && \
+    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/${USERNAME}/.bashrc && \
+    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/${USERNAME}/.bashrc && \
+    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/${USERNAME}/.bashrc && \
+    echo '----------------------------------------------' >> /home/${USERNAME}/.bashrc && \
+    echo '     Container: PHP-FPM ${PHP_VERSION}' >> /home/${USERNAME}/.bashrc && \
+    echo 'EOF' >> /home/${USERNAME}/.bashrc"
 
 WORKDIR /app
