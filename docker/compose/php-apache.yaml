@@ -30,7 +30,7 @@ services:
     hostname: php-74-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -52,7 +52,7 @@ services:
     hostname: php-80-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -74,7 +74,7 @@ services:
     hostname: php-81-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -96,7 +96,7 @@ services:
     hostname: php-82-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -118,7 +118,7 @@ services:
     hostname: php-83-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -140,7 +140,7 @@ services:
     hostname: php-84-apache
     build:
       context: ../dockerfiles
-      dockerfile: apache.php.Dockerfile
+      dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
