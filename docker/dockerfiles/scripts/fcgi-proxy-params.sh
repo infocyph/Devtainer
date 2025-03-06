@@ -1,10 +1,12 @@
 #!/bin/bash
 
 FASTCGI_PARAMS_FILE="/etc/nginx/fastcgi_params"
+PROXY_PARAMS_FILE="/etc/nginx/proxy_params"
 
-# Backup the original file
+# Backup the original FastCGI parameters file
 cp "$FASTCGI_PARAMS_FILE" "${FASTCGI_PARAMS_FILE}.bak"
 
+# Declare required headers
 declare -A fastcgi_params=(
     ["HTTP_CLIENT_IP"]='$http_client_ip'
     ["HTTP_X_FORWARDED_FOR"]='$http_x_forwarded_for'
@@ -16,7 +18,7 @@ declare -A fastcgi_params=(
     ["HTTP_X_APPENGINE_USER_IP"]='$http_x_appengine_user_ip'
     ["HTTP_X_REAL_IP"]='$http_x_real_ip'
     ["HTTP_X_CLUSTER_CLIENT_IP"]='$http_x_cluster_client_ip'
-#    ["FLY_CLIENT_IP"]='$fly_client_ip'
+#    ["HTTP_X_FLY_CLIENT_IP"]='$fly_client_ip'
     ["HTTP_ALI_CLIENT_IP"]='$http_ali_client_ip'
     ["HTTP_X_ORACLE_CLIENT_IP"]='$http_x_oracle_client_ip'
     ["HTTP_X_STACKPATH_EDGE_IP"]='$http_x_stackpath_edge_ip'
@@ -38,10 +40,22 @@ declare -A fastcgi_params=(
     ["REMOTE_USER"]='$remote_user'
 )
 
+# Check and append missing headers in fastcgi_params
 for key in "${!fastcgi_params[@]}"; do
     if ! grep -q "^fastcgi_param $key " "$FASTCGI_PARAMS_FILE"; then
+        echo "Adding missing FastCGI param: $key"
         echo "fastcgi_param $key ${fastcgi_params[$key]};" >> "$FASTCGI_PARAMS_FILE"
     fi
 done
 
-echo "FastCGI parameters updated successfully!"
+# Convert FastCGI params to Proxy headers
+sed 's/^fastcgi_param /proxy_set_header /' "$FASTCGI_PARAMS_FILE" > "$PROXY_PARAMS_FILE"
+
+# Manually append essential proxy headers
+{
+    echo "proxy_set_header X-Real-IP \$remote_addr;";
+    echo "proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
+    echo "proxy_set_header X-Forwarded-Proto \$scheme;";
+} >> "$PROXY_PARAMS_FILE"
+
+echo "✅ FastCGI parameters updated and Proxy parameters file created: $PROXY_PARAMS_FILE"

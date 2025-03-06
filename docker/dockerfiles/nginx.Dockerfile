@@ -7,10 +7,12 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 
 # Copy the update script into the container
-COPY scripts/fcgi-params.sh /usr/local/bin/update_fastcgi_params.sh
+COPY scripts/fcgi-proxy-params.sh /usr/local/bin/update_params.sh
 
 # Set execute permissions for the script
-RUN chmod +x /usr/local/bin/update_fastcgi_params.sh && /usr/local/bin/update_fastcgi_params.sh
+RUN chmod +x /usr/local/bin/update_params.sh && \
+    /usr/local/bin/update_params.sh && \
+    rm -f /usr/local/bin/update_params.sh
 
 # Expose ports
 EXPOSE 80 443
