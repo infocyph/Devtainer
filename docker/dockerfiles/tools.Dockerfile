@@ -24,6 +24,9 @@ RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
 # Install lazydocker
 RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
 
+COPY scripts/generate_certificates.sh /usr/local/bin/generate_certificates.sh
+RUN chmod +x /usr/local/bin/generate_certificates.sh && /usr/local/bin/generate_certificates.sh
+
 # Add system user
 ARG UID=1000
 ARG GID=root
@@ -39,9 +42,6 @@ RUN set -eux; \
     mkdir -p /home/devuser/.composer/vendor /home/devuser/.local/share/mkcert && \
     chown -R devuser:devuser /home/devuser && \
     echo "devuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devuser
-
-# Generate SSL certificate with mkcert
-RUN bash -c "mkcert -cert-file /etc/mkcert/localhost/fullchain.pem -key-file /etc/mkcert/localhost/privkey.pem localhost"
 
 USER devuser
 WORKDIR /app
