@@ -43,8 +43,8 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_74:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_74:-}
     profiles:
-      - php
-      - php74
+      - phpapache
+      - php74apache
 
   php80:
     <<: *apache-php-service
@@ -65,8 +65,8 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_80:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_80:-}
     profiles:
-      - php
-      - php80
+      - phpapache
+      - php80apache
 
   php81:
     <<: *apache-php-service
@@ -87,8 +87,8 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_81:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_81:-}
     profiles:
-      - php
-      - php81
+      - phpapache
+      - php81apache
 
   php82:
     <<: *apache-php-service
@@ -109,8 +109,8 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_82:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_82:-}
     profiles:
-      - php
-      - php82
+      - phpapache
+      - php82apache
 
   php83:
     <<: *apache-php-service
@@ -131,8 +131,8 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_83:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_83:-}
     profiles:
-      - php
-      - php83
+      - phpapache
+      - php83apache
 
   php84:
     <<: *apache-php-service
@@ -153,5 +153,5 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_84:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_84:-}
     profiles:
-      - php
-      - php84
+      - phpapache
+      - php84apache

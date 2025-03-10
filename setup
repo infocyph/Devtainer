@@ -19,7 +19,7 @@ fi
 case "$1" in
 permissions|perm|permisson)
   assign_permissions
-  echo -e "${GREEN}Permissions has been assigned wherever necessary.${NC}"
+  echo -e "${GREEN}Necessary Permissions has been assigned.${NC}"
   ;;
 domain)
   while true; do

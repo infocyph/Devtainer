@@ -163,7 +163,7 @@ function create_configuration() {
         modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER}"
     elif [[ "$SERVER_TYPE" == "Apache" ]]; then
         CONFIG_FILE="configuration/apache/${DOMAIN_NAME}.conf"
-        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "apache" "${PHP_CONTAINER}"
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER}apache"
     else
         echo -e "${RED}Invalid server type: $SERVER_TYPE${NC}"
         return 1
@@ -195,13 +195,15 @@ function create_configuration() {
 
 # Start the script
 function configure_server() {
-    show_step 1 5
+    show_step 1 6
     prompt_for_domain
-    show_step 2 5
+    show_step 2 6
+    choose_server_type
+    show_step 3 6
     prompt_for_http_https
-    show_step 3 5
+    show_step 4 6
     prompt_for_doc_root
-    show_step 4 5
+    show_step 5 6
     prompt_for_client_max_body_size
     show_step 6 6
     prompt_for_php_version
