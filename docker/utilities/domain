@@ -113,15 +113,11 @@ function prompt_for_client_max_body_size() {
         read -e -r CLIENT_MAX_BODY_SIZE
     done
 
-    # For Nginx, append 'M'
-    if [[ "$SERVER_TYPE" == "Nginx" ]]; then
-        CLIENT_MAX_BODY_SIZE="${CLIENT_MAX_BODY_SIZE}M"
-    fi
-
     # For Apache, convert to bytes (LimitRequestBody requires bytes)
-    if [[ "$SERVER_TYPE" == "Apache" ]]; then
-        CLIENT_MAX_BODY_SIZE=$((CLIENT_MAX_BODY_SIZE * 1000000))  # Converts MB to bytes
-    fi
+    CLIENT_MAX_BODY_SIZE_APACHE=$((CLIENT_MAX_BODY_SIZE * 1000000))
+
+    # For Nginx, append 'M'
+    CLIENT_MAX_BODY_SIZE="${CLIENT_MAX_BODY_SIZE}M"
 }
 
 # Function to prompt for PHP version
@@ -149,6 +145,7 @@ function generate_conf_from_template() {
     sed -e "s|{{SERVER_NAME}}|$DOMAIN_NAME|g" \
         -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
         -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
+        -e "s|{{CLIENT_MAX_BODY_SIZE_APACHE}}|$CLIENT_MAX_BODY_SIZE_APACHE|g" \
         -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
         "$template_file" >> "$output_file"
 }
@@ -181,13 +178,11 @@ function create_configuration() {
         generate_conf_from_template "$base_template_path/https.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
 
         # Issue SSL certificate
-        local certbot_cmd="docker exec -it CERTIFICATE_BOT certbot certonly --webroot --webroot-path=/var/www/certbot \
-            --email ${EMAIL_ADDRESS} --agree-tos --no-eff-email -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}"
+        local certbot_cmd="docker exec -it SERVER_TOOLS certify"
         if ! eval "$certbot_cmd"; then
             echo -e "${RED}Error issuing SSL certificate for ${DOMAIN_NAME}.${NC}"
             return 1
         fi
-        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "certbot"
     fi
 
     echo -e "\n${GREEN}Configuration for ${DOMAIN_NAME} has been saved.${NC}"
