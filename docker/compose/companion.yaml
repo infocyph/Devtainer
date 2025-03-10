@@ -17,7 +17,7 @@ services:
       - ../../configuration/ssl:/etc/mkcert
       - ../../configuration/ssh:/home/${USERNAME:-dockery}/.ssh
       - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../../configuration/rootCA/rootCA.pem:/home/${USERNAME:-dockery}/.local/share/mkcert/rootCA.pem
+      - ../../configuration/rootCA:/home/${USERNAME:-dockery}/.local/share/mkcert
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime
       - /etc/timezone:/etc/timezone

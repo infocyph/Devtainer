@@ -25,8 +25,8 @@ RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
 # Install lazydocker
 RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
 
-COPY scripts/certify.sh /usr/local/bin/certify.sh
-RUN chmod +x /usr/local/bin/certify.sh && /usr/local/bin/certify.sh
+COPY scripts/certify.sh /usr/local/bin/certify
+RUN chmod +x /usr/local/bin/certify && /usr/local/bin/certify
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -53,7 +53,7 @@ RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/ma
     sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
     sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/${USERNAME}/.bashrc && \
     sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/${USERNAME}/.bashrc && \
-    echo 'alias certify=\"/usr/local/bin/certify.sh\"' >> /home/${USERNAME}/.bashrc && \
+    echo 'alias certify=\"/usr/local/bin/certify\"' >> /home/${USERNAME}/.bashrc && \
     echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/${USERNAME}/.bashrc && \
     echo ' _                    _ ____             _    ' >> /home/${USERNAME}/.bashrc && \
     echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/${USERNAME}/.bashrc && \
