@@ -3,7 +3,7 @@ services:
     container_name: SERVER_TOOLS
     hostname: server-tools
     build:
-      context: ../conf/docker-files
+      context: ../dockerfiles
       dockerfile: tools.Dockerfile
       args:
         UID: ${UID:-1000}

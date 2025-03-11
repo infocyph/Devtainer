@@ -1,10 +1,6 @@
 #!/bin/bash
 
 FASTCGI_PARAMS_FILE="/etc/nginx/fastcgi_params"
-PROXY_PARAMS_FILE="/etc/nginx/proxy_params"
-
-# Backup the original FastCGI parameters file
-cp "$FASTCGI_PARAMS_FILE" "${FASTCGI_PARAMS_FILE}.bak"
 
 # Declare required headers
 declare -A fastcgi_params=(
@@ -48,14 +44,4 @@ for key in "${!fastcgi_params[@]}"; do
     fi
 done
 
-# Convert FastCGI params to Proxy headers
-sed 's/^fastcgi_param /proxy_set_header /' "$FASTCGI_PARAMS_FILE" > "$PROXY_PARAMS_FILE"
-
-# Manually append essential proxy headers
-{
-    echo "proxy_set_header X-Real-IP \$remote_addr;";
-    echo "proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
-    echo "proxy_set_header X-Forwarded-Proto \$scheme;";
-} >> "$PROXY_PARAMS_FILE"
-
-echo "✅ FastCGI parameters updated and Proxy parameters file created: $PROXY_PARAMS_FILE"
+echo "✅ FastCGI parameters updated"

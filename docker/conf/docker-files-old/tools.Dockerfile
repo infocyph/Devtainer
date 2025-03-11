@@ -12,12 +12,13 @@ RUN apt install python3 python3-pip curl git wget net-tools libnss3-tools \
 # Set environment for Composer
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ENV COMPOSER_ALLOW_SUPERUSER=1
+ARG USERNAME=dockery
 
 # Install mkcert
 RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
     mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert && \
     chmod +x /usr/local/bin/mkcert && \
-    mkdir -p /etc/mkcert/localhost
+    mkdir -p /etc/mkcert
 
 # lazydocker
 ENV DIR=/usr/local/bin
@@ -44,34 +45,32 @@ RUN set -eux; \
     else \
         UPDATED_UID=$UID; \
     fi && \
-    useradd -G ${GID} -u ${UPDATED_UID} -d /home/devuser devuser && \
+    useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     apt update && apt install --no-install-recommends -y sudo && \
-    mkdir -p /home/devuser/.composer/vendor && \
-    mkdir -p /home/devuser/.local/share/mkcert && \
-    chown -R devuser:devuser /home/devuser && \
-    echo "devuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devuser && \
+    mkdir -p /home/${USERNAME}/.composer/vendor && \
+    mkdir -p /home/${USERNAME}/.local/share/mkcert && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} && \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
-RUN bash -c "mkcert -cert-file \"/etc/mkcert/localhost/fullchain.pem\" -key-file \"/etc/mkcert/localhost/privkey.pem\" \"localhost\""
-
 
 #ENV COMPOSER_HOME=/home/devuser/.composer
 #ENV PATH="$COMPOSER_HOME/vendor/bin:$PATH"
-USER devuser
+USER ${USERNAME}
 RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
-    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm extract history alias-completion ssh-agent)' /home/devuser/.bashrc && \
-    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/devuser/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/devuser/.bashrc && \
-    echo 'alias cert=\"mkcert -cert-file \"/etc/mkcert/\$1/fullchain.pem\" -key-file \"/etc/mkcert/\$1/privkey.pem\" \"\$1\" \"*.\$1\"\"' >> /home/devuser/.bashrc && \
-    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/devuser/.bashrc && \
-    echo ' _                    _ ____             _    ' >> /home/devuser/.bashrc && \
-    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/devuser/.bashrc && \
-    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/devuser/.bashrc && \
-    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/devuser/.bashrc && \
-    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/devuser/.bashrc && \
-    echo '----------------------------------------------' >> /home/devuser/.bashrc && \
-    echo '          Brought to you by: Infocyph' >> /home/devuser/.bashrc && \
-    echo 'EOF' >> /home/devuser/.bashrc"
+    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
+    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/${USERNAME}/.bashrc && \
+    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/${USERNAME}/.bashrc && \
+    echo 'alias certify=\"/usr/local/bin/certify\"' >> /home/${USERNAME}/.bashrc && \
+    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/${USERNAME}/.bashrc && \
+    echo ' _                    _ ____             _    ' >> /home/${USERNAME}/.bashrc && \
+    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/${USERNAME}/.bashrc && \
+    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/${USERNAME}/.bashrc && \
+    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/${USERNAME}/.bashrc && \
+    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/${USERNAME}/.bashrc && \
+    echo '----------------------------------------------' >> /home/${USERNAME}/.bashrc && \
+    echo '     Container: Tools' >> /home/${USERNAME}/.bashrc && \
+    echo 'EOF' >> /home/${USERNAME}/.bashrc"
 WORKDIR /app
 
 CMD ["tail", "-f", "/dev/null"]

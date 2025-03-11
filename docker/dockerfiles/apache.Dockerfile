@@ -15,6 +15,8 @@ ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
 ARG PHP_EXT_VERSIONED
 ENV APACHE_LOG_DIR=/var/log/apache2
+ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
 RUN set -eux; \
@@ -24,7 +26,7 @@ RUN set -eux; \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
     rm -f /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/default-ssl.conf && \
-    a2enmod rewrite ssl socache_shmcb headers setenvif && a2ensite * && \
+    a2enmod rewrite ssl socache_shmcb headers setenvif && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Install Node.js and npm globally if requested

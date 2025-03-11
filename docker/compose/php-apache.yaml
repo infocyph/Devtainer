@@ -11,12 +11,15 @@ x-apache-php-service: &apache-php-service
     - /etc/localtime:/etc/localtime
     - /etc/timezone:/etc/timezone
     - "${PROJECT_DIR:-./../../../application}:/app"
-    - ../conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-    - ../conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+    - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
     - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+    - ../../configuration/apache:/etc/apache2/sites-enabled
     - ../../configuration/ssh:/home/${USERNAME:-dockery}/.ssh
   extra_hosts:
     - "host.docker.internal:host-gateway"
+  depends_on:
+    - server-tools
   healthcheck:
     test: [ "CMD", "curl", "-f", "http://localhost" ]
     interval: 30s
@@ -24,7 +27,7 @@ x-apache-php-service: &apache-php-service
     retries: 3
 
 services:
-  php74:
+  php74apache:
     <<: *apache-php-service
     container_name: PHP_7.4_APACHE
     hostname: php-74-apache
@@ -46,7 +49,7 @@ services:
       - phpapache
       - php74apache
 
-  php80:
+  php80apache:
     <<: *apache-php-service
     container_name: PHP_8.0_APACHE
     hostname: php-80-apache
@@ -68,7 +71,7 @@ services:
       - phpapache
       - php80apache
 
-  php81:
+  php81apache:
     <<: *apache-php-service
     container_name: PHP_8.1_APACHE
     hostname: php-81-apache
@@ -90,7 +93,7 @@ services:
       - phpapache
       - php81apache
 
-  php82:
+  php82apache:
     <<: *apache-php-service
     container_name: PHP_8.2_APACHE
     hostname: php-82-apache
@@ -112,7 +115,7 @@ services:
       - phpapache
       - php82apache
 
-  php83:
+  php83apache:
     <<: *apache-php-service
     container_name: PHP_8.3_APACHE
     hostname: php-83-apache
@@ -134,7 +137,7 @@ services:
       - phpapache
       - php83apache
 
-  php84:
+  php84apache:
     <<: *apache-php-service
     container_name: PHP_8.4_APACHE
     hostname: php-84-apache

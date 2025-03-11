@@ -21,7 +21,7 @@ permissions|perm|permisson)
   assign_permissions
   echo -e "${GREEN}Necessary Permissions has been assigned.${NC}"
   ;;
-domain)
+domain|domains)
   while true; do
     configure_server
     read -e -r -p "$(echo -e "${YELLOW}Do you want to configure another site? (y/n):${NC}") " CONTINUE
@@ -31,7 +31,7 @@ domain)
   done
   echo -e "${GREEN}All configurations have been completed.${NC}"
   ;;
-profiles)
+profiles|profile)
   prompt_common_vars
   for service in "${!services_and_profiles[@]}"; do
     process_service "$service"

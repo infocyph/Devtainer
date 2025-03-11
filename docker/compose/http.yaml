@@ -27,6 +27,8 @@ services:
     networks:
       - frontend
     command: [ "/bin/sh", "-c", "nginx -g 'daemon off;'" ]
+    depends_on:
+      - server-tools
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost" ]
       interval: 30s

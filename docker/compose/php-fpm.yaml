@@ -11,12 +11,14 @@ x-php-fpm-service: &php-fpm-service
     - /etc/localtime:/etc/localtime
     - /etc/timezone:/etc/timezone
     - "${PROJECT_DIR:-./../../../application}:/app"
-    - ../conf/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
-    - ../conf/php/openssl.cnf:/etc/ssl/openssl.cnf
+    - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
     - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
     - ../../configuration/ssh:/home/${USERNAME:-dockery}/.ssh
   extra_hosts:
     - "host.docker.internal:host-gateway"
+  depends_on:
+    - server-tools
   healthcheck:
     test: ["CMD-SHELL", "php-fpm -t || exit 1"]
     interval: 30s

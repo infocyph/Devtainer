@@ -9,7 +9,7 @@ CERT_DIR="/etc/mkcert"
 # Create certificate directory if it doesn't exist
 mkdir -p "$CERT_DIR"
 
-# Function to extract domains from filenames
+# Functions
 get_domains_from_files() {
     local dir="$1"
     local domains=()
@@ -22,19 +22,18 @@ get_domains_from_files() {
     done
     echo "${domains[@]}" # Return as space-separated list
 }
+run_mkcert() {
+    mkcert "$@" &> /dev/null
+}
 
 # Get domains from directories, ensuring no empty values are appended
 DOMAINS=""
 
 DIR1_DOMAINS=$(get_domains_from_files "/home/$USERNAME/.local/share/apache")
-if [[ -n "$DIR1_DOMAINS" ]]; then
-    DOMAINS+="$DIR1_DOMAINS "
-fi
+[[ -n "$DIR1_DOMAINS" ]] && DOMAINS+="$DIR1_DOMAINS "
 
 DIR2_DOMAINS=$(get_domains_from_files "/home/$USERNAME/.local/share/nginx")
-if [[ -n "$DIR2_DOMAINS" ]]; then
-    DOMAINS+="$DIR2_DOMAINS "
-fi
+[[ -n "$DIR2_DOMAINS" ]] && DOMAINS+="$DIR2_DOMAINS "
 
 # Always add extra default domains
 DOMAINS+="localhost 127.0.0.1 ::1"
@@ -49,11 +48,12 @@ echo "$CERT_DOMAINS" | awk '{print "   - "$0}'
 # Convert domain list back to space-separated format for mkcert
 CERT_DOMAINS=$(echo "$CERT_DOMAINS" | tr '\n' ' ')
 
-# Generate ECDSA Certificates (Add `--ecdsa` flag)
-mkcert --ecdsa -cert-file "$CERT_DIR/nginx-server.pem" -key-file "$CERT_DIR/nginx-server-key.pem" $CERT_DOMAINS
-mkcert --ecdsa -cert-file "$CERT_DIR/nginx-proxy.pem" -key-file "$CERT_DIR/nginx-proxy-key.pem" $CERT_DOMAINS
-mkcert --ecdsa -client -cert-file "$CERT_DIR/nginx-client.pem" -key-file "$CERT_DIR/nginx-client-key.pem" $CERT_DOMAINS
-mkcert --ecdsa -cert-file "$CERT_DIR/apache-server.pem" -key-file "$CERT_DIR/apache-server-key.pem" $CERT_DOMAINS
-mkcert --ecdsa -client -cert-file "$CERT_DIR/apache-client.pem" -key-file "$CERT_DIR/apache-client-key.pem" $CERT_DOMAINS
+# Generate Certificates
+run_mkcert --ecdsa -cert-file "$CERT_DIR/nginx-server.pem" -key-file "$CERT_DIR/nginx-server-key.pem" $CERT_DOMAINS
+run_mkcert --ecdsa -cert-file "$CERT_DIR/nginx-proxy.pem" -key-file "$CERT_DIR/nginx-proxy-key.pem" $CERT_DOMAINS
+run_mkcert --ecdsa -client -cert-file "$CERT_DIR/nginx-client.pem" -key-file "$CERT_DIR/nginx-client-key.pem" $CERT_DOMAINS
+run_mkcert --ecdsa -cert-file "$CERT_DIR/apache-server.pem" -key-file "$CERT_DIR/apache-server-key.pem" $CERT_DOMAINS
+run_mkcert --ecdsa -client -cert-file "$CERT_DIR/apache-client.pem" -key-file "$CERT_DIR/apache-client-key.pem" $CERT_DOMAINS
+run_mkcert -install
 
 echo "✅ ECDSA Certificates successfully generated in $CERT_DIR"
