@@ -46,3 +46,4 @@ EOF
 
 # Display confirmation message
 echo "✅ Proxy parameters successfully written to $PROXY_PARAMS_FILE"
+rm -f -- "$0"

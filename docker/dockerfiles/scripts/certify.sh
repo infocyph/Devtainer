@@ -1,59 +1,63 @@
 #!/bin/bash
 
-# Set username, defaulting to 'dockery' if not set
-USERNAME=${USERNAME:-dockery}
-
 # Output directory for certificates
 CERT_DIR="/etc/mkcert"
+
+# Ensure mkcert is installed
+command -v mkcert &> /dev/null || { echo "❌ mkcert not found! Please install it first."; exit 1; }
 
 # Create certificate directory if it doesn't exist
 mkdir -p "$CERT_DIR"
 
 # Functions
-get_domains_from_files() {
-    local dir="$1"
+get_domains_from_dirs() {
     local domains=()
-    [[ -d "$dir" ]] || return
-    for file in "$dir"/*.conf; do
-        [[ -f "$file" ]] || continue
-        local domain
-        domain=$(basename "$file" .conf)  # Extract domain from filename
-        domains+=("$domain" "*.$domain") # Include wildcard
+    local dir
+    local file
+
+    # Iterate over all provided directories
+    for dir in "$@"; do
+        [[ -d "$dir" ]] || continue
+        for file in "$dir"/*.conf; do
+            [[ -f "$file" ]] || continue
+            local domain
+            domain=$(basename "$file" .conf)
+            domains+=("$domain" "*.$domain")
+        done
     done
-    echo "${domains[@]}" # Return as space-separated list
+    domains+=("localhost" "127.0.0.1" "::1")
+    echo "${domains[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '
 }
+
 run_mkcert() {
     mkcert "$@" &> /dev/null
 }
 
-# Get domains from directories, ensuring no empty values are appended
-DOMAINS=""
+# Directories to check
+DIRS=(
+    "/etc/share/vhosts/apache"
+    "/etc/share/vhosts/nginx"
+)
 
-DIR1_DOMAINS=$(get_domains_from_files "/home/$USERNAME/.local/share/apache")
-[[ -n "$DIR1_DOMAINS" ]] && DOMAINS+="$DIR1_DOMAINS "
-
-DIR2_DOMAINS=$(get_domains_from_files "/home/$USERNAME/.local/share/nginx")
-[[ -n "$DIR2_DOMAINS" ]] && DOMAINS+="$DIR2_DOMAINS "
-
-# Always add extra default domains
-DOMAINS+="localhost 127.0.0.1 ::1"
-
-# Remove leading/trailing whitespace and ensure unique values
-CERT_DOMAINS=$(echo "$DOMAINS" | tr ' ' '\n' | sort -u)
+# Get unique domains from provided directories
+CERT_DOMAINS=$(get_domains_from_dirs "${DIRS[@]}")
 
 # Display domains in a list format
 echo "🔹 Generating ECDSA certificates for the following domains:"
-echo "$CERT_DOMAINS" | awk '{print "   - "$0}'
+echo "$CERT_DOMAINS" | tr ' ' '\n' | sort -u | awk '{print "   - "$0}'
 
-# Convert domain list back to space-separated format for mkcert
-CERT_DOMAINS=$(echo "$CERT_DOMAINS" | tr '\n' ' ')
-
-# Generate Certificates
-run_mkcert --ecdsa -cert-file "$CERT_DIR/nginx-server.pem" -key-file "$CERT_DIR/nginx-server-key.pem" $CERT_DOMAINS
-run_mkcert --ecdsa -cert-file "$CERT_DIR/nginx-proxy.pem" -key-file "$CERT_DIR/nginx-proxy-key.pem" $CERT_DOMAINS
-run_mkcert --ecdsa -client -cert-file "$CERT_DIR/nginx-client.pem" -key-file "$CERT_DIR/nginx-client-key.pem" $CERT_DOMAINS
-run_mkcert --ecdsa -cert-file "$CERT_DIR/apache-server.pem" -key-file "$CERT_DIR/apache-server-key.pem" $CERT_DOMAINS
-run_mkcert --ecdsa -client -cert-file "$CERT_DIR/apache-client.pem" -key-file "$CERT_DIR/apache-client-key.pem" $CERT_DOMAINS
+# Generate Certificates using a loop
+declare -A CERT_FILES=(
+    ["nginx-server"]="nginx-server.pem nginx-server-key.pem"
+    ["nginx-proxy"]="nginx-proxy.pem nginx-proxy-key.pem"
+    ["nginx-client"]="nginx-client.pem nginx-client-key.pem --client"
+    ["apache-server"]="apache-server.pem apache-server-key.pem"
+    ["apache-client"]="apache-client.pem apache-client-key.pem --client"
+)
+for cert in "${!CERT_FILES[@]}"; do
+    IFS=' ' read -r cert_file key_file client_flag <<< "${CERT_FILES[$cert]}"
+    run_mkcert --ecdsa $client_flag -cert-file "$CERT_DIR/$cert_file" -key-file "$CERT_DIR/$key_file" $CERT_DOMAINS
+done
 run_mkcert -install
 
 echo "✅ ECDSA Certificates successfully generated in $CERT_DIR"

@@ -40,9 +40,13 @@ RUN set -eux; \
         apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*; \
     fi
 
+COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
+COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
+RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
+
 # Add a system user and install sudo
 ARG UID=1000
-ARG GID=root
+ARG GID=1000
 RUN set -eux; \
     UID_MIN=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}') && \
     UID_MAX=$(grep "^UID_MAX" /etc/login.defs | awk '{print $2}') && \
@@ -60,19 +64,5 @@ RUN set -eux; \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
-    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/${USERNAME}/.bashrc && \
-    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/${USERNAME}/.bashrc && \
-    echo ' _                    _ ____             _    ' >> /home/${USERNAME}/.bashrc && \
-    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/${USERNAME}/.bashrc && \
-    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/${USERNAME}/.bashrc && \
-    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/${USERNAME}/.bashrc && \
-    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/${USERNAME}/.bashrc && \
-    echo '----------------------------------------------' >> /home/${USERNAME}/.bashrc && \
-    echo '     Container: PHP-FPM ${PHP_VERSION}' >> /home/${USERNAME}/.bashrc && \
-    echo 'EOF' >> /home/${USERNAME}/.bashrc"
-
+RUN sudo /usr/local/bin/alias-maker.sh fpm && sudo /usr/local/bin/cli-setup.sh "     Container: PHP-FPM ${PHP_VERSION}"
 WORKDIR /app

@@ -7,17 +7,18 @@ services:
       dockerfile: tools.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
     restart: always
     environment:
       - TZ=${TZ:-}
     volumes:
-      - ../../configuration/apache:/home/${USERNAME:-dockery}/.local/share/apache
-      - ../../configuration/nginx:/home/${USERNAME:-dockery}/.local/share/nginx
+      - ../../configuration/apache:/etc/share/vhosts/apache
+      - ../../configuration/nginx:/etc/share/vhosts/nginx
       - ../../configuration/ssl:/etc/mkcert
-      - ../../configuration/ssh:/home/${USERNAME:-dockery}/.ssh
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../../configuration/rootCA:/home/${USERNAME:-dockery}/.local/share/mkcert
+      - ../../configuration/rootCA:/etc/share/rootCA
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime
       - /etc/timezone:/etc/timezone

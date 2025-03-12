@@ -10,6 +10,7 @@ RUN set -eux; \
 
 # Set environment for Composer
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
+ENV CAROOT=/etc/share/rootCA
 ARG USERNAME=dockery
 
 # Install mkcert
@@ -31,11 +32,13 @@ RUN pip install git-fame && git config --global alias.fame '!python3 -m gitfame'
 RUN pip install manim gitpython git-story
 
 COPY scripts/certify.sh /usr/local/bin/certify
-RUN chmod +x /usr/local/bin/certify
+COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
+COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
+RUN chmod +x /usr/local/bin/certify /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
 
 # Add a system user and install sudo
 ARG UID=1000
-ARG GID=root
+ARG GID=1000
 
 RUN set -eux; \
     UID_MIN=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}') && \
@@ -48,29 +51,16 @@ RUN set -eux; \
     fi && \
     useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     apt update && apt install --no-install-recommends -y sudo && \
-    mkdir -p /home/${USERNAME}/.composer/vendor && \
-    mkdir -p /home/${USERNAME}/.local/share/mkcert && \
+    mkdir -p /home/${USERNAME}/.composer/vendor \
+    /etc/share/rootCA \
+    /etc/share/vhosts/apache \
+    /etc/share/vhosts/nginx && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} && \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN /usr/local/bin/certify && \
-    bash -c "curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sed -i '/^plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
-    sed -i '/^#plugins=(/,/^)/c\plugins=(git bashmarks colored-man-pages npm xterm)' /home/${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?OSH_THEME=.*/OSH_THEME=\"lambda\"/' /home/${USERNAME}/.bashrc && \
-    sed -i 's/^#\\?DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE=true/' /home/${USERNAME}/.bashrc && \
-    echo 'alias certify=\"/usr/local/bin/certify\"' >> /home/${USERNAME}/.bashrc && \
-    echo 'cat << \"EOF\" | boxes -d parchment -a hcvc | lolcat' >> /home/${USERNAME}/.bashrc && \
-    echo ' _                    _ ____             _    ' >> /home/${USERNAME}/.bashrc && \
-    echo '| |    ___   ___ __ _| |  _ \\  ___   ___| | __' >> /home/${USERNAME}/.bashrc && \
-    echo '| |   / _ \\ / __/ _  | | | | |/ _ \\ / __| |/ /' >> /home/${USERNAME}/.bashrc && \
-    echo '| |__| (_) | (_| (_| | | |_| | (_) | (__|   < ' >> /home/${USERNAME}/.bashrc && \
-    echo '|_____\\___/ \\___\\__,_|_|____/ \\___/ \\___|_|\\_\\' >> /home/${USERNAME}/.bashrc && \
-    echo '----------------------------------------------' >> /home/${USERNAME}/.bashrc && \
-    echo '     Container: Tools' >> /home/${USERNAME}/.bashrc && \
-    echo 'EOF' >> /home/${USERNAME}/.bashrc"
+RUN /usr/local/bin/certify && sudo /usr/local/bin/alias-maker.sh tools && sudo /usr/local/bin/cli-setup.sh "             Container: Tools"
 WORKDIR /app
 
 CMD ["/bin/bash", "-c", "/usr/local/bin/certify && tail -f /dev/null"]

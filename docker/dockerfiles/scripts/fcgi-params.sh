@@ -45,3 +45,4 @@ for key in "${!fastcgi_params[@]}"; do
 done
 
 echo "✅ FastCGI parameters updated"
+rm -f -- "$0"

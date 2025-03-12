@@ -14,7 +14,7 @@ x-php-fpm-service: &php-fpm-service
     - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
     - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
     - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-    - ../../configuration/ssh:/home/${USERNAME:-dockery}/.ssh
+    - "../../configuration/ssh:/home/${USER}/.ssh:ro"
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:
@@ -35,7 +35,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -57,7 +58,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -79,7 +81,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -101,7 +104,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -123,7 +127,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -145,7 +150,8 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
