@@ -60,4 +60,4 @@ for cert in "${!CERT_FILES[@]}"; do
 done
 run_mkcert -install
 
-echo "✅ ECDSA Certificates successfully generated in $CERT_DIR"
+echo "✅ ECDSA Certificates successfully generated!"
