@@ -22,7 +22,7 @@ get_domains_from_dirs() {
             [[ -f "$file" ]] || continue
             local domain
             domain=$(basename "$file" .conf)
-            domains+=("$domain" "*.$domain")
+            [[ -n "$domain" ]] && domains+=("$domain" "*.$domain")
         done
     done
     domains+=("localhost" "127.0.0.1" "::1")

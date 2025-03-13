@@ -7,17 +7,16 @@ loadEnv() {
 
 # Reload Nginx and Apache containers gracefully
 reload_http_containers() {
-  # Reload Nginx
-  if [ "$(docker ps -q -f name=NGINX)" ]; then
-    echo -e "${GREEN}- Reloading Nginx container (NGINX)...${NC}"
-    docker exec -it NGINX nginx -s reload
-  fi
-
-  # Gracefully reload Apache
-  if [ "$(docker ps -q -f name=APACHE)" ]; then
-    echo -e "${GREEN}- Gracefully reloading Apache container (APACHE)...${NC}"
-    docker exec -it APACHE apachectl graceful
-  fi
+  echo -e "${GREEN}- Reloading HTTP...${NC}"
+  docker ps -q -f name=NGINX && docker exec -it NGINX nginx -s reload
+  local VERSION
+  for VERSION in 7.4 8.0 8.1 8.2 8.3 8.4; do
+    local CONTAINER="PHP_${VERSION}_APACHE"
+    if docker inspect "$CONTAINER" &> /dev/null && docker ps -q -f name="^${CONTAINER}$" &> /dev/null; then
+      docker exec -it "$CONTAINER" apachectl graceful &> /dev/null
+    fi
+  done
+  echo -e "${GREEN}- HTTP Reloaded...${NC}"
 }
 
 # Check for the existence of necessary files

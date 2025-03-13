@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 SHELL ["/bin/bash", "-c"]
 
 ARG USERNAME=dockery
+ENV USERNAME=${USERNAME}
 ARG LINUX_PKG
 ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
@@ -25,7 +26,8 @@ RUN set -eux; \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
-    rm -f /etc/apache2/sites-available/000-default.conf && \
+    rm -f /etc/apache2/sites-available/default-ssl.conf && \
+    echo "ServerName localdock" >> /etc/apache2/apache2.conf && \
     a2enmod rewrite ssl socache_shmcb headers setenvif && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
@@ -64,5 +66,7 @@ RUN set -eux; \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN sudo /usr/local/bin/alias-maker.sh apache-php && sudo /usr/local/bin/cli-setup.sh "     Container: PHP ${PHP_VERSION} with Apache"
+RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+    sudo /usr/local/bin/alias-maker.sh apache-php ${USERNAME} && \
+    sudo /usr/local/bin/cli-setup.sh "     Container: PHP ${PHP_VERSION} with Apache" ${USERNAME}
 WORKDIR /app

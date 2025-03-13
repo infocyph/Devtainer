@@ -13,7 +13,7 @@ COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
 
 # Set execute permissions for the script
 RUN chmod +x /usr/local/bin/fcgi_params.sh /usr/local/bin/proxy_params.sh /usr/local/bin/alias-maker.sh && \
-    /usr/local/bin/fcgi_params.sh && /usr/local/bin/proxy_params.sh && /usr/local/bin/alias-maker.sh nginx
+    /usr/local/bin/fcgi_params.sh && /usr/local/bin/proxy_params.sh
 
 # Expose ports
 EXPOSE 80 443

@@ -12,6 +12,7 @@ RUN set -eux; \
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ENV CAROOT=/etc/share/rootCA
 ARG USERNAME=dockery
+ENV USERNAME=${USERNAME}
 
 # Install mkcert
 RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
@@ -60,7 +61,10 @@ RUN set -eux; \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN /usr/local/bin/certify && sudo /usr/local/bin/alias-maker.sh tools && sudo /usr/local/bin/cli-setup.sh "             Container: Tools"
+RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+    /usr/local/bin/certify && \
+    sudo /usr/local/bin/alias-maker.sh tools ${USERNAME} && \
+    sudo /usr/local/bin/cli-setup.sh "             Container: Tools" ${USERNAME}
 WORKDIR /app
 
 CMD ["/bin/bash", "-c", "/usr/local/bin/certify && tail -f /dev/null"]

@@ -3,7 +3,6 @@
 set -euo pipefail
 directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
 
-source "$directory/docker/utilities/common"
 # Display usage information
 usage() {
   cat <<EOF
@@ -32,7 +31,12 @@ if [ $# -eq 0 ]; then
   exit 1
 fi
 
+source "$directory/docker/utilities/common"
 source "$directory/docker/utilities/main"
+source "$directory/docker/utilities/common"
+source "$directory/docker/utilities/domain"
+source "$directory/docker/utilities/profiles"
+source "$directory/docker/utilities/env"
 
 check_required_commands "docker" "readlink"
 check_file_existence "/.env"
@@ -46,86 +50,115 @@ copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gi
 
 # Handle provided commands
 case "$1" in
-  up)
-    docker_compose up
-    ;;
-  start | reload)
-    docker_compose up -d
+permissions | perm | permisson)
+  assign_permissions
+  echo -e "${GREEN}Necessary Permissions has been assigned.${NC}"
+  ;;
+domain | domains)
+  while true; do
+    configure_server
+    read -e -r -p "$(echo -e "${YELLOW}Do you want to configure another site? (y/n):${NC}") " CONTINUE
+    if [[ "$CONTINUE" != "y" ]]; then
+      break
+    fi
+  done
+  echo -e "${GREEN}All configurations have been completed.${NC}"
+  ;;
+profiles | profile)
+  prompt_common_vars
+  for service in "${!services_and_profiles[@]}"; do
+    process_service "$service"
+  done
+  echo -e "${GREEN}Setup completed.${NC}"
+  ;;
+env)
+  env_file="$directory/.env"
+  target="${2:-}"
+  if [ "$target" = "docker" ]; then
+    env_file="$directory/docker/.env"
+  fi
+  process_env_file "$env_file"
+  ;;
+up)
+  docker_compose up
+  ;;
+start | reload)
+  docker_compose up -d
+  reload_http_containers
+  ;;
+stop | down)
+  docker_compose down
+  ;;
+reboot | restart)
+  docker_compose down && docker_compose up -d
+  reload_http_containers
+  ;;
+rebuild)
+  docker_compose down && docker_compose build --no-cache --pull "${@:2}"
+  ;;
+config)
+  docker_compose config
+  ;;
+http)
+  if [ "$2" = reload ]; then
     reload_http_containers
-    ;;
-  stop | down)
-    docker_compose down
-    ;;
-  reboot | restart)
-    docker_compose down && docker_compose up -d
-    reload_http_containers
-    ;;
-  rebuild)
-    docker_compose down && docker_compose build --no-cache --pull "${@:2}"
-    ;;
-  config)
-    docker_compose config
-    ;;
-  http)
-    if [ "$2" = reload ]; then
-      reload_http_containers
-    fi
-    ;;
-  core)
-    if [ -z "$2" ]; then
-      echo -e "${RED}Please provide a domain (e.g., ./server core test.com).${NC}"
-      exit 1
-    fi
-    domain="$2"
-    conf_file=""
-
-    # Define Apache and Nginx configuration file paths
-    apache_conf="$directory/configuration/apache/$domain.conf"
-    nginx_conf="$directory/configuration/nginx/$domain.conf"
-
-    # Check for the config file in Apache or Nginx directories
-    if [ -f "$apache_conf" ]; then
-      conf_file="$apache_conf"
-    elif [ -f "$nginx_conf" ]; then
-      conf_file="$nginx_conf"
-    else
-      echo -e "${RED}No configuration file found for $domain.${NC}"
-      exit 1
-    fi
-
-    # Extract PHP container and doc root from config file
-    php_container=$(grep -oP '(?<=fcgi://)[^:]+(?=:9000)' "$conf_file")
-    doc_root=$(grep -oP '(?<=/app)[^"]+' "$conf_file")
-
-    # Validate PHP container and document root
-    if [ -z "$php_container" ] || [ -z "$doc_root" ]; then
-      echo -e "${RED}Could not determine PHP container or document root for $domain.${NC}"
-      exit 1
-    fi
-
-    # Adjust PHP container naming (e.g., php83 -> PHP_8.3)
-    php_version="${php_container//php/}"
-    php_container="PHP_${php_version:0:1}.${php_version:1}"
-
-    echo -e "${GREEN}Launching into $php_container's bash panel and cd'ing to /app$doc_root...${NC}"
-
-    # Execute into PHP container and change directory
-    docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/bash"
-    ;;
-  tools)
-    docker exec -it SERVER_TOOLS bash -c "sudo -u devuser /bin/bash"
-    ;;
-  lzd)
-    docker exec -it SERVER_TOOLS lazydocker
-    ;;
-  help)
-    usage
-    ;;
-  *)
-    echo -e "${RED}Invalid command: $1${NC}"
-    usage
+  fi
+  ;;
+core)
+  if [ -z "$2" ]; then
+    echo -e "${RED}Please provide a domain (e.g., ./server core test.com).${NC}"
     exit 1
-    ;;
+  fi
+  domain="$2"
+  conf_file=""
+
+  # Define Apache and Nginx configuration file paths
+  apache_conf="$directory/configuration/apache/$domain.conf"
+  nginx_conf="$directory/configuration/nginx/$domain.conf"
+
+  # Check for the config file in Apache or Nginx directories
+  if [ -f "$apache_conf" ]; then
+    conf_file="$apache_conf"
+  elif [ -f "$nginx_conf" ]; then
+    conf_file="$nginx_conf"
+  else
+    echo -e "${RED}No configuration file found for $domain.${NC}"
+    exit 1
+  fi
+
+  # Extract PHP container and doc root from config file
+  php_container=$(grep -oP '(?<=fcgi://)[^:]+(?=:9000)' "$conf_file")
+  doc_root=$(grep -oP '(?<=/app)[^"]+' "$conf_file")
+
+  # Validate PHP container and document root
+  if [ -z "$php_container" ] || [ -z "$doc_root" ]; then
+    echo -e "${RED}Could not determine PHP container or document root for $domain.${NC}"
+    exit 1
+  fi
+
+  # Adjust PHP container naming (e.g., php83 -> PHP_8.3)
+  php_version="${php_container//php/}"
+  php_container="PHP_${php_version:0:1}.${php_version:1}"
+
+  echo -e "${GREEN}Launching into $php_container's bash panel and cd'ing to /app$doc_root...${NC}"
+
+  # Execute into PHP container and change directory
+  docker exec -it "$php_container" bash -c "cd /app$doc_root && sudo -u devuser /bin/bash"
+  ;;
+tools)
+  docker exec -it SERVER_TOOLS bash
+  ;;
+lzd)
+  docker exec -it SERVER_TOOLS lazydocker
+  ;;
+help)
+  usage
+  ;;
+*)
+  echo -e "${RED}Invalid command: $1${NC}"
+  usage
+  exit 1
+  ;;
 esac
 
 unset directory

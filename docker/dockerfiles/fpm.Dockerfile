@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 SHELL ["/bin/bash", "-c"]
 
 ARG USERNAME=dockery
+ENV USERNAME=${USERNAME}
 ARG LINUX_PKG
 ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
@@ -64,5 +65,7 @@ RUN set -eux; \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN sudo /usr/local/bin/alias-maker.sh fpm && sudo /usr/local/bin/cli-setup.sh "     Container: PHP-FPM ${PHP_VERSION}"
+RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+    sudo /usr/local/bin/alias-maker.sh fpm ${USERNAME} && \
+    sudo /usr/local/bin/cli-setup.sh "     Container: PHP-FPM ${PHP_VERSION}" ${USERNAME}
 WORKDIR /app

@@ -1,12 +1,7 @@
 #!/bin/bash
 
-# Ensure a container name is provided
-if [[ -z "$1" ]]; then
-  echo "Usage: $0 <container_name>"
-  exit 1
-fi
-
 CONTAINER_NAME="$1"
+USERNAME="$2"
 ALIASES=()
 
 # Define aliases based on container name
