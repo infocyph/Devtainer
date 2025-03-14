@@ -3,6 +3,13 @@
 set -euo pipefail
 directory="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
 
+# Define colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No color
+
 # Display usage information
 usage() {
   cat <<EOF
@@ -46,6 +53,7 @@ ensure_files_exist \
   "/configuration/scheduler/supervisor-worker.conf" \
   "/configuration/scheduler/supervisor-logrotate"
 update_env "$directory/docker/.env" "WORKING_DIR" "$directory"
+update_env "$directory/docker/.env" "USER" "$(id -un)"
 #copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
 
 # Handle provided commands

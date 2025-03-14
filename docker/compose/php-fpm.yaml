@@ -1,5 +1,5 @@
 x-php-fpm-service: &php-fpm-service
-  restart: always
+  restart: unless-stopped
   environment:
     - TZ=${TZ:-}
   env_file:

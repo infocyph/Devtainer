@@ -14,7 +14,7 @@ services:
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     environment:
@@ -41,7 +41,7 @@ services:
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql-replication
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     environment:
@@ -73,7 +73,7 @@ services:
     image: mysql:${MYSQL_VERSION:-latest}
     profiles:
       - mysql-replication
-    restart: always
+    restart: unless-stopped
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-12345}
       - MYSQL_USER=${MYSQL_USER:-devuser}
@@ -110,7 +110,7 @@ services:
     container_name: MYSQL_CLIENT
     hostname: mysql-client
     image: dbeaver/cloudbeaver:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${DBEAVER_PORT:-8080}:8978"  # DBeaver CloudBeaver uses port 8978 by default
     environment:
@@ -136,7 +136,7 @@ services:
     container_name: MYSQL_REPLICATION_CLIENT
     hostname: mysql-replication-client
     image: dbeaver/cloudbeaver:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${DBEAVER_PORT_REPLICATION:-8081}:8978"  # Using a different port for replication
     environment:

@@ -7,7 +7,7 @@ services:
       dockerfile: nginx.Dockerfile
       args:
         NGINX_VERSION: ${NGINX_VERSION:-latest}
-    restart: always
+    restart: unless-stopped
     environment:
       - TZ=${TZ:-}
     ports:

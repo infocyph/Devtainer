@@ -14,7 +14,7 @@ services:
     image: mariadb:${MARIADB_VERSION:-latest}
     profiles:
       - mariadb
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MARIADB_PORT:-3306}:3306"
     environment:
@@ -41,7 +41,7 @@ services:
     image: mariadb:${MARIADB_VERSION:-latest}
     profiles:
       - mariadb-replication
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MARIADB_PORT:-3306}:3306"
     environment:
@@ -73,7 +73,7 @@ services:
     image: mariadb:${MARIADB_VERSION:-latest}
     profiles:
       - mariadb-replication
-    restart: always
+    restart: unless-stopped
     environment:
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD:-12345}
       - MARIADB_USER=${MARIADB_USER:-devuser}
@@ -109,7 +109,7 @@ services:
     container_name: MARIADB_CLIENT
     hostname: mariadb-client
     image: dbeaver/cloudbeaver:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${DBEAVER_PORT:-8080}:8978"  # DBeaver CloudBeaver uses port 8978 by default
     environment:
@@ -135,7 +135,7 @@ services:
     container_name: MARIADB_REPLICATION_CLIENT
     hostname: mariadb-replication-client
     image: dbeaver/cloudbeaver:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${DBEAVER_PORT_REPLICATION:-8081}:8978"  # Using a different port for replication
     environment:

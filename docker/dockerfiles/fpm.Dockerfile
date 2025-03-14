@@ -67,5 +67,5 @@ RUN set -eux; \
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/alias-maker.sh fpm ${USERNAME} && \
-    sudo /usr/local/bin/cli-setup.sh "     Container: PHP-FPM ${PHP_VERSION}" ${USERNAME}
+    sudo /usr/local/bin/cli-setup.sh "        Container: PHP-FPM ${PHP_VERSION}" ${USERNAME}
 WORKDIR /app

@@ -14,7 +14,7 @@ services:
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -37,7 +37,7 @@ services:
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis-replication
-    restart: always
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -60,7 +60,7 @@ services:
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
     profiles:
       - redis-replication
-    restart: always
+    restart: unless-stopped
     depends_on:
       - redis-master
     environment:
@@ -82,7 +82,7 @@ services:
     container_name: REDIS_INSIGHT
     hostname: redis-insight
     image: redis/redisinsight:latest
-    restart: always
+    restart: unless-stopped
     environment:
       - REDIS_INSIGHT_REDIS_HOST=redis-server
     ports:
@@ -101,7 +101,7 @@ services:
     container_name: REDIS_REPLICATION_INSIGHT
     hostname: redis-replication-insight
     image: redis/redisinsight:latest
-    restart: always
+    restart: unless-stopped
     environment:
       - REDIS_INSIGHT_REDIS_HOST=redis-master
     ports:

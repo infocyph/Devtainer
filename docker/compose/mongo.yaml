@@ -14,7 +14,7 @@ services:
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MONGODB_PORT:-27017}:27017"
     environment:
@@ -38,7 +38,7 @@ services:
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MONGODB_PORT:-27017}:27017"
     environment:
@@ -66,7 +66,7 @@ services:
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
-    restart: always
+    restart: unless-stopped
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGODB_ROOT_USERNAME:-root}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
@@ -87,7 +87,7 @@ services:
     image: mongo:${MONGODB_VERSION:-latest}
     profiles:
       - mongodb-replica
-    restart: always
+    restart: unless-stopped
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGODB_ROOT_USERNAME:-root}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
@@ -106,7 +106,7 @@ services:
     container_name: MONGO_ADMIN
     hostname: mongodb-client
     image: mongo-express:${MONGO_EXPRESS_VERSION:-latest}
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MONGO_EXPRESS_PORT:-8081}:8081"
     depends_on:
@@ -129,7 +129,7 @@ services:
     container_name: MONGO_REPLICA_ADMIN
     hostname: mongodb-replica-client
     image: mongo-express:${MONGO_EXPRESS_VERSION:-latest}
-    restart: always
+    restart: unless-stopped
     ports:
       - "${MONGO_EXPRESS_PORT:-8081}:8081"
     environment:

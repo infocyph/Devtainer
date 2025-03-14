@@ -9,7 +9,7 @@ services:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
         USERNAME: ${USER}
-    restart: always
+    restart: unless-stopped
     environment:
       - TZ=${TZ:-}
     volumes:

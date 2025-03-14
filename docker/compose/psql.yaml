@@ -14,7 +14,7 @@ services:
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
       - postgresql
-    restart: always
+    restart: unless-stopped
     ports:
       - "${POSTGRESQL_PORT:-5432}:5432"
     environment:
@@ -39,7 +39,7 @@ services:
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
       - postgresql-replication
-    restart: always
+    restart: unless-stopped
     ports:
       - "${POSTGRESQL_PORT:-5432}:5432"
     environment:
@@ -66,7 +66,7 @@ services:
     image: postgres:${POSTGRESQL_VERSION:-latest}
     profiles:
       - postgresql-replication
-    restart: always
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -94,7 +94,7 @@ services:
     container_name: PG_ADMIN
     hostname: postgres-client
     image: dpage/pgadmin4:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${PGADMIN_PORT:-5400}:80"
     environment:
@@ -115,7 +115,7 @@ services:
     container_name: PG_REPLICATION_ADMIN
     hostname: postgres-replication-client
     image: dpage/pgadmin4:latest
-    restart: always
+    restart: unless-stopped
     ports:
       - "${PGADMIN_PORT:-5400}:80"
     environment:
