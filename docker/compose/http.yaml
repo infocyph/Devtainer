@@ -7,8 +7,6 @@ services:
       dockerfile: nginx.Dockerfile
       args:
         NGINX_VERSION: ${NGINX_VERSION:-latest}
-    profiles:
-      - nginx
     restart: always
     environment:
       - TZ=${TZ:-}

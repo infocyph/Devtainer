@@ -107,3 +107,48 @@ find_php_and_doc_root() {
   echo "$php_version"
   echo "$doc_root"
 }
+
+launch_php_container() {
+    local domain="$1"
+    local conf_file=""
+    local nginx_conf="$directory/configuration/nginx/$domain.conf"
+    local apache_conf="$directory/configuration/apache/$domain.conf"
+    local doc_root=""
+
+    # Check if the Nginx config file exists
+    if [[ ! -f "$nginx_conf" ]]; then
+        echo -e "${RED}No Nginx configuration file found for $domain.${NC}"
+        exit 1
+    fi
+
+    # Determine if Nginx is using FastCGI (PHP-FPM) or Proxying to Apache
+    if grep -q "fastcgi_pass" "$nginx_conf"; then
+        php_container=$(grep -Eo 'fastcgi_pass ([^:]+):9000' "$nginx_conf" | awk '{print $2}' | sed 's/:9000$//')  # Remove :9000 port
+        doc_root=$(grep -m1 -Eo 'root [^;]+' "$nginx_conf" | awk '{print $2}')  # Pick first match only
+    elif grep -q "proxy_pass" "$nginx_conf"; then
+        php_container=$(grep -Eo 'proxy_pass https://([^:]+):443' "$nginx_conf" | awk '{print $2}' | sed 's#https://##' | sed 's/:443$//')
+
+        # Locate the matching Apache configuration
+        if [[ ! -f "$apache_conf" ]]; then
+            echo -e "${RED}No matching Apache configuration found for $domain.${NC}"
+            exit 1
+        fi
+
+        doc_root=$(grep -m1 -Eo 'DocumentRoot [^ ]+' "$apache_conf" | awk '{print $2}')  # Pick first match only
+    else
+        echo -e "${RED}Could not determine the container setup for $domain.${NC}"
+        exit 1
+    fi
+
+    # Validate extracted values
+    if [[ -z "$php_container" ]]; then
+        echo -e "${RED}Failed to determine PHP container for $domain.${NC}"
+        exit 1
+    fi
+    if [[ -z "$doc_root" ]]; then
+        echo -e "${YELLOW}Failed to determine document root for $domain.${NC}"
+        doc_root="/app"
+    fi
+
+    docker exec -it "$php_container" bash --login -c "cd \"$doc_root\" && exec bash"
+}
