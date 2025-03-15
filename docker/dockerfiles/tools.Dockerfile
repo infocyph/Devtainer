@@ -34,7 +34,7 @@ RUN chmod +x /usr/local/bin/certify /usr/local/bin/cli-setup.sh /usr/local/bin/a
 
 # Add a system user and install sudo
 ARG UID=1000
-ARG GID=1000
+ARG GID=root
 
 RUN set -eux; \
     UID_MIN=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}') && \

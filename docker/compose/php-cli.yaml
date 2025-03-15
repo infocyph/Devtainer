@@ -10,9 +10,10 @@ x-php-cli-service: &php-cli-service
     - /etc/localtime:/etc/localtime:ro
     - /etc/timezone:/etc/timezone:ro
     - "${PROJECT_DIR:-./../../../application}:/app"
-    - "../conf/php/openssl.cnf:/etc/ssl/openssl.cnf"
-    - "../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini"
-    - "../../configuration/ssh:/home/devuser/.ssh"
+    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+    - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+    - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+    - ../../configuration/scheduler:/etc/supervisor/conf.d:ro
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:
@@ -24,11 +25,12 @@ services:
     container_name: PHP_7.4_CLI
     hostname: php-74-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         WORKING_DIR: ${WORKING_DIR}
@@ -44,11 +46,12 @@ services:
     container_name: PHP_8.0_CLI
     hostname: php-80-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -65,11 +68,12 @@ services:
     container_name: PHP_8.1_CLI
     hostname: php-81-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -86,11 +90,12 @@ services:
     container_name: PHP_8.2_CLI
     hostname: php-82-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -107,11 +112,12 @@ services:
     container_name: PHP_8.3_CLI
     hostname: php-83-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}
@@ -128,11 +134,12 @@ services:
     container_name: PHP_8.4_CLI
     hostname: php-84-cli
     build:
-      context: "../conf/docker-files"
+      context: ../dockerfiles
       dockerfile: cli.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
+        USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
         NODE_VERSION: ${NODE_VERSION:-}

@@ -7,8 +7,8 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Copy scripts and make them executable
-COPY scripts/certbot-renew /usr/local/bin/certbot-renew
-COPY scripts/certbot-hook /usr/local/bin/reload-services
+COPY scripts/certbot-renew.sh /usr/local/bin/certbot-renew
+COPY scripts/certbot-hook.sh /usr/local/bin/reload-services
 RUN chmod +x /usr/local/bin/certbot-renew /usr/local/bin/reload-services
 
 # Set default command

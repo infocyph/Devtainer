@@ -1,12 +1,13 @@
 # Use ARG to define the PHP version (with default)
 ARG PHP_VERSION=8.4
-FROM php:${PHP_VERSION}-apache
+FROM php:${PHP_VERSION}-cli
 
 LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
-LABEL org.opencontainers.image.description="PHP APACHE"
+LABEL org.opencontainers.image.description="PHP CLI Supervisor"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 
+# Set Bash as the default shell
 SHELL ["/bin/bash", "-c"]
 
 ARG USERNAME=dockery
@@ -15,35 +16,24 @@ ARG LINUX_PKG
 ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
 ARG PHP_EXT_VERSIONED
-ENV APACHE_LOG_DIR=/var/log/apache2
 ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat boxes cron supervisor ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
-    rm -f /etc/apache2/sites-available/default-ssl.conf && \
-    echo "ServerName localdock" >> /etc/apache2/apache2.conf && \
-    a2enmod rewrite ssl socache_shmcb headers setenvif && \
-    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
-
-# Install Node.js and npm globally if requested
-ARG NODE_VERSION
-ARG NODE_VERSION_VERSIONED
-RUN set -eux; \
-    if [[ -n "$NODE_VERSION_VERSIONED" || -n "$NODE_VERSION" ]]; then \
-        curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION_VERSIONED:-$NODE_VERSION}.x | bash - && \
-        apt install --no-install-recommends -y nodejs && \
-        npm i -g npm@latest && \
-        apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*; \
-    fi
+    mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
 COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
+COPY scripts/supervisord.conf /etc/supervisor/supervisord.conf
+COPY scripts/logrotate-supervisor /etc/logrotate.d/supervisor
 RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
 
 # Add a system user and install sudo
@@ -65,8 +55,12 @@ RUN set -eux; \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
+# Switch to non-root user
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sudo /usr/local/bin/alias-maker.sh apache-php ${USERNAME} && \
-    sudo /usr/local/bin/cli-setup.sh "     Container: PHP ${PHP_VERSION} with Apache" ${USERNAME}
+    sudo /usr/local/bin/alias-maker.sh fpm ${USERNAME} && \
+    sudo /usr/local/bin/cli-setup.sh "        Container: PHP-CLI ${PHP_VERSION}" ${USERNAME}
 WORKDIR /app
+
+# Default command: start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
