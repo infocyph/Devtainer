@@ -1,11 +1,14 @@
 FROM debian:stable-slim
 
+LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
+LABEL org.opencontainers.image.description="Tools"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
+
 RUN set -eux; \
     apt update && apt upgrade -y && \
     apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates fzf autojump bash-completion \
-    python3 python3-pip curl git wget net-tools libnss3-tools \
-    build-essential python3-dev libcairo2-dev libpango1.0-dev ffmpeg -y && \
-    rm -f /usr/lib/python3.*/EXTERNALLY-MANAGED && \
+    net-tools libnss3-tools && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Set environment for Composer
@@ -23,14 +26,6 @@ RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
 # lazydocker
 ENV DIR=/usr/local/bin
 RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
-
-# git fame
-RUN pip install git-fame && git config --global alias.fame '!python3 -m gitfame' && \
-    wget -O /usr/local/bin/owners https://raw.githubusercontent.com/abmmhasan/misc-ref/main/git/owners.sh && \
-    chmod +x /usr/local/bin/owners
-
-# Git story
-RUN pip install manim gitpython git-story
 
 COPY scripts/certify.sh /usr/local/bin/certify
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
@@ -62,9 +57,7 @@ RUN set -eux; \
 
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    /usr/local/bin/certify && \
     sudo /usr/local/bin/alias-maker.sh tools ${USERNAME} && \
     sudo /usr/local/bin/cli-setup.sh "             Container: Tools" ${USERNAME}
 WORKDIR /app
-
 CMD ["/bin/bash", "-c", "/usr/local/bin/certify && tail -f /dev/null"]

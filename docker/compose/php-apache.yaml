@@ -17,6 +17,7 @@ x-apache-php-service: &apache-php-service
     - ../../configuration/apache:/etc/apache2/sites-enabled
     - ../../configuration/ssl:/etc/mkcert
     - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+    - ../../logs/apache:/var/log/apache2
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:

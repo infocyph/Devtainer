@@ -1,2 +1,4 @@
 *
+!apache
+!nginx
 !.gitignore
