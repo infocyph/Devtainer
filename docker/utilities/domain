@@ -125,7 +125,7 @@ function prompt_for_client_max_body_size() {
 function prompt_for_php_version() {
   echo -e "${CYAN}Choose the PHP version:${NC}"
   PS3="Enter the number: "
-  options=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
+  options=("7.3" "7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
   select PHP_VERSION in "${options[@]}"; do
     if [[ -n "$PHP_VERSION" ]]; then
       PHP_CONTAINER_PROFILE="php${PHP_VERSION//./}"
@@ -157,7 +157,7 @@ function generate_conf_from_template() {
 
 function create_configuration() {
   local CONFIG_NGINX="configuration/nginx/${DOMAIN_NAME}.conf"
-  local CONFIG_APACHE="configuration/apache/${DOMAIN_NAME}.conf"
+  local CONFIG_APACHE="configuration/apache/${PHP_CONTAINER_PROFILE}/${DOMAIN_NAME}.conf"
   local CONFIG_FILE
   local base_template_path="$directory/docker/template"
 

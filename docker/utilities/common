@@ -64,7 +64,7 @@ assign_permissions() {
     chmod 755 "$directory/docker/"
   fi
   find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
-  find "$directory/docker/conf/docker-files/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
+  find "$directory/docker/dockerfiles/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
 
   if [ "$(stat -c "%a" "$directory/data/")" != "775" ]; then
     chmod 775 "$directory/data/"

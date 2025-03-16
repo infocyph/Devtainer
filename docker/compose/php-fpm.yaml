@@ -26,6 +26,29 @@ x-php-fpm-service: &php-fpm-service
     retries: 3
 
 services:
+  php73:
+    <<: *php-fpm-service
+    container_name: PHP_7.3
+    hostname: php-73
+    build:
+      context: ../dockerfiles
+      dockerfile: fpm.Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        USERNAME: ${USER}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
+        PHP_VERSION: 7.3
+        PHP_EXT_VERSIONED: ${PHP_EXT_73:-}
+        LINUX_PKG_VERSIONED: ${LINUX_PKG_73:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_73:-}
+    profiles:
+      - php
+      - php73
+
   php74:
     <<: *php-fpm-service
     container_name: PHP_7.4

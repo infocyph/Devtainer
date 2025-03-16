@@ -47,7 +47,7 @@ services:
       - "MONGO_REPLICA_SET_NAME=rs0"
     volumes:
       - ./data/mongo-primary:/data/db
-      - ./docker/conf/docker-files/scripts/mongo-replica:/scripts/init-replica.sh
+      - ./docker/dockerfiles/scripts/mongo-replica:/scripts/init-replica.sh
     command: "--replSet rs0"
     networks:
       - backend
