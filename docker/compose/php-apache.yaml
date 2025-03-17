@@ -7,16 +7,6 @@ x-apache-php-service: &apache-php-service
   networks:
     - frontend
     - backend
-  volumes:
-    - /etc/localtime:/etc/localtime
-    - /etc/timezone:/etc/timezone
-    - "${PROJECT_DIR:-./../../../application}:/app"
-    - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-    - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-    - ../../configuration/ssl:/etc/mkcert
-    - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-    - ../../logs/apache:/var/log/apache2
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:
@@ -37,7 +27,7 @@ services:
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -48,6 +38,15 @@ services:
         LINUX_PKG_VERSIONED: ${LINUX_PKG_73:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_73:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php73:/etc/apache2/sites-enabled
     profiles:
       - phpapache
@@ -58,13 +57,22 @@ services:
     container_name: PHP_7.4_APACHE
     hostname: php-74-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php74:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -83,13 +91,22 @@ services:
     container_name: PHP_8.0_APACHE
     hostname: php-80-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php80:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -108,13 +125,22 @@ services:
     container_name: PHP_8.1_APACHE
     hostname: php-81-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php81:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -133,13 +159,22 @@ services:
     container_name: PHP_8.2_APACHE
     hostname: php-82-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php82:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -158,13 +193,22 @@ services:
     container_name: PHP_8.3_APACHE
     hostname: php-83-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php83:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -183,13 +227,22 @@ services:
     container_name: PHP_8.4_APACHE
     hostname: php-84-apache
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - ../../configuration/ssl:/etc/mkcert
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - ../../logs/apache:/var/log/apache2
       - ../../configuration/apache/php84:/etc/apache2/sites-enabled
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}

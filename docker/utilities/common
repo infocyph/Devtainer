@@ -73,11 +73,11 @@ assign_permissions() {
   chmod g+s "$directory/data/"
   chown -R "$USER:docker" "$directory/data/"
 
-  if [ "$(stat -c "%a" "$directory/logs/")" != "775" ]; then
-    chmod 775 "$directory/logs/"
+  if [ "$(stat -c "%a" "$directory/logs/")" != "777" ]; then
+    chmod -R 777 "$directory/logs/"
   fi
-  find "$directory/logs/" -type f ! -perm 660 -exec chmod 660 {} \;
-  chmod g+s "$directory/logs/"
+  #find "$directory/logs/" -type f ! -perm 660 -exec chmod 660 {} \;
+  #chmod g+s "$directory/logs/"
   chown -R "$USER:docker" "$directory/logs/"
 
   if [ "$(stat -c "%a" "$directory/bin/")" != "755" ]; then

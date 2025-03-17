@@ -7,7 +7,7 @@ services:
       dockerfile: tools.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
     restart: unless-stopped
     environment:

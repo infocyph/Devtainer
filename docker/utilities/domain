@@ -164,10 +164,10 @@ function create_configuration() {
   # Set configuration file path based on server type
   if [[ "$SERVER_TYPE" == "Nginx" ]]; then
     CONFIG_FILE=$CONFIG_NGINX
-    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_CONTAINER_PROFILE}"
+    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "${PHP_CONTAINER_PROFILE}"
   elif [[ "$SERVER_TYPE" == "Apache" ]]; then
     CONFIG_FILE=$CONFIG_APACHE
-    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "nginx" "${PHP_APACHE_CONTAINER_PROFILE}"
+    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "${PHP_APACHE_CONTAINER_PROFILE}"
   else
     echo -e "${RED}Invalid server type: $SERVER_TYPE${NC}"
     return 1
@@ -175,7 +175,7 @@ function create_configuration() {
 
   # Handle HTTP configuration
   if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
-    generate_conf_from_template "$base_template_path/redirect.nginx.conf" "$directory/$CONFIG_FILE"
+    generate_conf_from_template "$base_template_path/redirect.nginx.conf" "$directory/$CONFIG_NGINX"
   elif [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
     [[ "$SERVER_TYPE" == "Apache" ]] && generate_conf_from_template "$base_template_path/proxy-http.nginx.conf" "$directory/$CONFIG_NGINX"
     generate_conf_from_template "$base_template_path/http.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"

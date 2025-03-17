@@ -35,7 +35,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -58,7 +58,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -81,7 +81,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -104,7 +104,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -127,7 +127,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -150,7 +150,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -173,7 +173,7 @@ services:
       dockerfile: fpm.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        GID: ${GID:-root}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
