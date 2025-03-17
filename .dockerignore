@@ -1,0 +1,2 @@
+# Ignore dotfiles inside mounted folders at build stage
+configuration/**/.gitignore

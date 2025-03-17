@@ -7,6 +7,16 @@ x-apache-php-service: &apache-php-service
   networks:
     - frontend
     - backend
+  volumes:
+    - /etc/localtime:/etc/localtime
+    - /etc/timezone:/etc/timezone
+    - "${PROJECT_DIR:-./../../../application}:/app"
+    - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
+    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+    - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+    - ../../configuration/ssl:/etc/mkcert
+    - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+    - ../../logs/apache:/var/log/apache2
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:
@@ -22,17 +32,6 @@ services:
     <<: *apache-php-service
     container_name: PHP_7.3_APACHE
     hostname: php-73-apache
-    volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-      - ../../configuration/apache/php73:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -48,6 +47,8 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_73:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_73:-}
         NODE_VERSION_VERSIONED: ${NODE_VERSION_73:-}
+    volumes:
+      - ../../configuration/apache/php73:/etc/apache2/sites-enabled
     profiles:
       - phpapache
       - php73apache
@@ -57,16 +58,7 @@ services:
     container_name: PHP_7.4_APACHE
     hostname: php-74-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php74:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -91,16 +83,7 @@ services:
     container_name: PHP_8.0_APACHE
     hostname: php-80-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php80:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -125,16 +108,7 @@ services:
     container_name: PHP_8.1_APACHE
     hostname: php-81-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php81:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -159,16 +133,7 @@ services:
     container_name: PHP_8.2_APACHE
     hostname: php-82-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php82:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -193,16 +158,7 @@ services:
     container_name: PHP_8.3_APACHE
     hostname: php-83-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php83:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
@@ -227,16 +183,7 @@ services:
     container_name: PHP_8.4_APACHE
     hostname: php-84-apache
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
-      - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
       - ../../configuration/apache/php84:/etc/apache2/sites-enabled
-      - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-      - ../../logs/apache:/var/log/apache2
     build:
       context: ../dockerfiles
       dockerfile: apache.Dockerfile
