@@ -96,6 +96,18 @@ setup)
       ;;
   esac
   ;;
+install)
+  case "$2" in
+    certificate)
+      install_root_ca
+      ;;
+    *)
+      echo -e "${RED}Invalid install command: $2${NC}"
+      usage
+      exit 1
+      ;;
+  esac
+  ;;
 up)
   docker_compose up
   ;;

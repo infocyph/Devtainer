@@ -26,6 +26,7 @@ RUN set -eux; \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
+    mkdir -p /etc/share/rootCA /etc/mkcert && \
     rm -f /etc/apache2/sites-available/default-ssl.conf && \
     echo "ServerName localdock" >> /etc/apache2/apache2.conf && \
     a2enmod rewrite ssl socache_shmcb headers setenvif && \
@@ -58,7 +59,7 @@ RUN set -eux; \
     else \
         UPDATED_UID=$UID; \
     fi && \
-    useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
+    useradd -G www-data,${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     apt update && apt install --no-install-recommends -y sudo && \
     mkdir -p /home/${USERNAME}/.composer/vendor && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} && \

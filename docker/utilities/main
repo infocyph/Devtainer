@@ -152,3 +152,40 @@ launch_php_container() {
 
     docker exec -it "$php_container" bash --login -c "cd \"$doc_root\" && exec bash"
 }
+
+install_root_ca() {
+  # Ensure the function is run as root
+  if [ "$EUID" -ne 0 ]; then
+    echo "Error: install_root_ca must be run as root. Try running with sudo."
+    return 1
+  fi
+
+  # Use first argument as the certificate path, or default to configuration/rootCA/rootCA.pem
+  local cert_src="$directory/configuration/rootCA/rootCA.pem"
+  local dest_dir="/usr/local/share/ca-certificates"
+  local cert_dest="$dest_dir/rootCA.crt"
+
+  # Verify that the certificate file exists
+  if [ ! -f "$cert_src" ]; then
+    echo "Error: Certificate file '$cert_src' not found."
+    return 1
+  fi
+
+  # Copy the certificate to the system's certificate directory with .crt extension
+  cp "$cert_src" "$cert_dest"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to copy certificate to '$dest_dir'."
+    return 1
+  fi
+  echo "Copied '$cert_src' to '$cert_dest'."
+
+  # Update the CA certificates store
+  update-ca-certificates
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to update CA certificates."
+    return 1
+  fi
+
+  echo "Successfully installed the mkcert root CA certificate."
+}
+

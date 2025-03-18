@@ -18,7 +18,8 @@ services:
       - /etc/timezone:/etc/timezone
       - ../../logs/nginx:/var/log/nginx
       - ../../configuration/nginx:/etc/nginx/conf.d
-      - ../../configuration/ssl:/etc/mkcert
+      - ../../configuration/ssl:/etc/mkcert:ro
+      - ../../configuration/rootCA:/etc/share/rootCA:ro
       - "${PROJECT_DIR:-./../../../application}:/app"
     extra_hosts:
       - "host.docker.internal:host-gateway"
