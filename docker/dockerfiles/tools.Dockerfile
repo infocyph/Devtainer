@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 RUN set -eux; \
     apt update && apt upgrade -y && \
     apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates fzf autojump bash-completion \
-    net-tools libnss3-tools iputils-ping && \
+    net-tools libnss3-tools iputils-ping nano && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # Set environment for Composer
