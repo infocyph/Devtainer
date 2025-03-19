@@ -122,13 +122,18 @@ generate_certificates() {
     )
 
     local output=""
+    local count_total=0
+    local count_regenerated=0
+    local count_valid=0
     local cert cert_file key_file client_flag p12_name full_cert_path
 
     for cert in "${!CERT_FILES[@]}"; do
+        count_total=$((count_total + 1))
         IFS=' ' read -r cert_file key_file client_flag <<< "${CERT_FILES[$cert]}"
         full_cert_path="$CERT_DIR/$cert_file"
         if validate_certificate "$full_cert_path"; then
-            output+=" - $cert: Valid & up-to-date; regeneration skipped."$'\n'
+            output+=" - $cert: Valid and up-to-date; regeneration skipped"$'\n'
+            count_valid=$((count_valid + 1))
         else
             # Generate the certificate if missing, expired, or missing domains.
             if [[ "$client_flag" == "--client" ]]; then
@@ -150,15 +155,27 @@ generate_certificates() {
                   -key-file "$CERT_DIR/$key_file" \
                   $CERT_DOMAINS
             fi
-            output+=" - $cert: Generated & configured for secure connections."$'\n'
+            output+=" - $cert: Generated and configured for secure connections"$'\n'
+            count_regenerated=$((count_regenerated + 1))
         fi
     done
 
     # Install certificates into the system trust store
     run_mkcert -install
 
+    # Build summary message
+    output+=$'\n'"--------------------------------------------------------------"$'\n'
+    if [ $count_regenerated -eq 0 ]; then
+         output+="[OK] All ($count_total) certificates are valid; no regeneration required."
+    elif [ $count_valid -eq 0 ]; then
+         output+="[OK] All ($count_total) certificates were regenerated."
+    else
+         output+="[OK] Certificate validation complete; Regenerated: $count_regenerated, Valid: $count_valid."
+    fi
+
     echo "$output"
 }
+
 
 ##############################################
 # Main Script Execution
@@ -184,8 +201,5 @@ CERT_DOMAINS=$(get_domains_from_dirs "${DIRS[@]}")
     echo "[*] Generating Certificates..."
     echo ""
     generate_certificates
-    echo ""
-    echo "--------------------------------------------------------------"
-    echo "[OK] Certificates generated successfully!"
     echo ""
 } | boxes -d diamonds -a hcvc | lolcat

@@ -1,7 +1,7 @@
 services:
   server-tools:
     container_name: SERVER_TOOLS
-    hostname: server-tools
+    hostname: local-dock
     build:
       context: ../dockerfiles
       dockerfile: tools.Dockerfile
