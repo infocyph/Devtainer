@@ -45,9 +45,27 @@ generate_certificates() {
     local output=""
     local cert
     for cert in "${!CERT_FILES[@]}"; do
-        IFS=' ' read -r cert_file key_file client_flag <<< "${CERT_FILES[$cert]}"
-        output+=" - $cert -> $cert_file & $key_file"$'\n'
-        run_mkcert --ecdsa $client_flag -cert-file "$CERT_DIR/$cert_file" -key-file "$CERT_DIR/$key_file" $CERT_DOMAINS
+      IFS=' ' read -r cert_file key_file client_flag <<< "${CERT_FILES[$cert]}"
+      if [[ "$client_flag" == "--client" ]]; then
+          run_mkcert --ecdsa $client_flag \
+            -cert-file "$CERT_DIR/$cert_file" \
+            -key-file "$CERT_DIR/$key_file" \
+            $CERT_DOMAINS
+          # Generate the p12 bundle manually using OpenSSL
+          p12_name="${cert_file%.pem}.p12"
+          openssl pkcs12 -export \
+            -in "$CERT_DIR/$cert_file" \
+            -inkey "$CERT_DIR/$key_file" \
+            -out "$CERT_DIR/$p12_name" \
+            -name "${cert_file%.pem} Certificate" \
+            -passout pass:""
+      else
+          run_mkcert --ecdsa $client_flag \
+            -cert-file "$CERT_DIR/$cert_file" \
+            -key-file "$CERT_DIR/$key_file" \
+            $CERT_DOMAINS
+      fi
+      output+=" - $cert -> $cert_file & $key_file"$'\n'
     done
 
     # Install certificates

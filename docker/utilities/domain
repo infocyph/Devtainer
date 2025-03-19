@@ -58,14 +58,12 @@ function prompt_for_http_https() {
       break
       ;;
     "HTTPS only")
-#      check_container_not_running "SERVER_TOOLS"
       ENABLE_HTTPS="y"
       ENABLE_REDIRECTION="n"
       KEEP_HTTP="n"
       break
       ;;
     "Both HTTP and HTTPS")
-#      check_container_not_running "SERVER_TOOLS"
       ENABLE_HTTPS="y"
       read -e -r -p "$(echo -e "${CYAN}Set up HTTP to HTTPS redirection (y/n)?${NC}") " ENABLE_REDIRECTION
       if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
@@ -140,6 +138,19 @@ function prompt_for_php_version() {
   done
 }
 
+# New function: Prompt for enabling client certificate verification (only if HTTPS is enabled)
+function prompt_for_client_verification() {
+  echo -e "${CYAN}Do you want to enable client certificate verification (mutual TLS)? (y/n):${NC}"
+  read -r client_verif_choice
+  if [[ "$client_verif_choice" =~ ^[Yy] ]]; then
+    ENABLE_CLIENT_VERIFICATION="ssl_verify_client on;"
+    echo -e "${GREEN}Client certificate verification enabled ${RED}(Please import the client certificate)${GREEN}.${NC}"
+  else
+    ENABLE_CLIENT_VERIFICATION="ssl_verify_client off;"
+    echo -e "${YELLOW}Client certificate verification disabled.${NC}"
+  fi
+}
+
 # Function to generate configuration from template
 function generate_conf_from_template() {
   local template_file=$1
@@ -147,12 +158,13 @@ function generate_conf_from_template() {
 
   # Replace placeholders in the template and append to the new conf file
   sed -e "s|{{SERVER_NAME}}|$DOMAIN_NAME|g" \
-    -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
-    -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
-    -e "s|{{CLIENT_MAX_BODY_SIZE_APACHE}}|$CLIENT_MAX_BODY_SIZE_APACHE|g" \
-    -e "s|{{PHP_APACHE_CONTAINER}}|$PHP_APACHE_CONTAINER|g" \
-    -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
-    "$template_file" >>"$output_file"
+      -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
+      -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
+      -e "s|{{CLIENT_MAX_BODY_SIZE_APACHE}}|$CLIENT_MAX_BODY_SIZE_APACHE|g" \
+      -e "s|{{PHP_APACHE_CONTAINER}}|$PHP_APACHE_CONTAINER|g" \
+      -e "s|{{PHP_CONTAINER}}|$PHP_CONTAINER|g" \
+      -e "s|{{CLIENT_VERIFICATION}}|$ENABLE_CLIENT_VERIFICATION|g" \
+      "$template_file" >>"$output_file"
 }
 
 function create_configuration() {
@@ -195,17 +207,26 @@ function create_configuration() {
 
 # Start the script
 function configure_server() {
-  show_step 1 6
+  show_step 1 7
   prompt_for_domain
-  show_step 2 6
+  show_step 2 7
   choose_server_type
-  show_step 3 6
+  show_step 3 7
   prompt_for_http_https
-  show_step 4 6
+  show_step 4 7
   prompt_for_doc_root
-  show_step 5 6
+  show_step 5 7
   prompt_for_client_max_body_size
-  show_step 6 6
+  show_step 6 7
   prompt_for_php_version
+
+  # Only prompt for client verification if HTTPS is enabled
+  if [[ "$ENABLE_HTTPS" == "y" ]]; then
+    show_step 7 7
+    prompt_for_client_verification
+  else
+    ENABLE_CLIENT_VERIFICATION="n"
+  fi
+
   create_configuration
 }
