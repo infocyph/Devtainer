@@ -71,7 +71,6 @@ init() {
   source "$directory/docker/utilities/core"
   source "$directory/docker/utilities/domain"
   source "$directory/docker/utilities/profiles"
-  source "$directory/docker/utilities/env"
 
   check_required_commands "docker" "readlink"
   check_file_existence "/.env"
