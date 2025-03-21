@@ -1,0 +1,306 @@
+#!/bin/bash
+
+# ===========================================================
+# 📄 FUNCTION INDEX
+# ===========================================================
+# show_step()                      - Display step progress in a script
+# check_required_commands()        - Check if required commands are installed
+# update_env()                     - Update or add environment variables in .env
+# reload_http_containers()         - Reload Nginx and Apache Docker containers
+# check_file_existence()           - Check if given files exist
+# ensure_files_exist()             - Ensure given files and their directories exist
+# copy_files()                     - Copy files with optional exclusion patterns
+# docker_compose()                 - Wrapper for docker compose with project/env config
+# find_php_and_doc_root()          - Extract PHP version and DOC_ROOT from config files
+# launch_php_container()           - Launch PHP container for a specified domain
+# assign_permissions()             - Assign standard permissions to project directories
+# check_container_not_running()    - Check if a Docker container is not running
+# modify_compose_profiles()        - Add or remove Docker Compose profiles in .env
+# install_root_ca()                - Install mkcert Root CA to system certificates
+# ===========================================================
+
+
+### ======================================
+### 🟢 CLI UX HELPERS
+### ======================================
+
+show_step() {
+  local current_step=$1
+  local total_steps=$2
+  echo -ne "${YELLOW}Step $current_step of $total_steps: ${NC}"
+}
+
+check_required_commands() {
+  local commands=("$@")
+  for cmd in "${commands[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo -e "${RED}- Error: '$cmd' is not installed! Aborting.${NC}"
+      exit 1
+    fi
+  done
+}
+
+### ======================================
+### ⚙️ ENV & CONFIG HELPERS
+### ======================================
+
+update_env() {
+  local env_file="$1"
+  local var_name="$2"
+  local var_value="$3"
+
+  [ ! -f "$env_file" ] && {
+    echo -e "${YELLOW}File '$env_file' not found. Creating one.${NC}"
+    touch "$env_file"
+  }
+
+  local escaped_var_name
+  escaped_var_name=$(echo "$var_name" | sed 's/[]\/$*.^|[]/\\&/g')
+  if grep -qE "^[# ]*${escaped_var_name}=" "$env_file"; then
+    sed -i -E "s|^[# ]*(${escaped_var_name}=).*|\1${var_value}|" "$env_file"
+  else
+    echo "${var_name}=${var_value}" >>"$env_file"
+  fi
+}
+
+### ======================================
+### 🌐 DOCKER & HTTP HELPERS
+### ======================================
+
+reload_http_containers() {
+  echo -e "${GREEN}- Reloading HTTP...${NC}"
+  if docker ps -q -f name=NGINX &>/dev/null; then
+    docker exec -it NGINX nginx -s reload
+  fi
+
+  for VERSION in 7.4 8.0 8.1 8.2 8.3 8.4; do
+    local CONTAINER="PHP_${VERSION}_APACHE"
+    if docker inspect "$CONTAINER" &>/dev/null && docker ps -q -f name="^${CONTAINER}$" &>/dev/null; then
+      docker exec -it "$CONTAINER" apachectl graceful &>/dev/null
+    fi
+  done
+  echo -e "${GREEN}- HTTP Reloaded...${NC}"
+}
+
+docker_compose() {
+  docker compose --project-directory "$directory" \
+    -f "$directory/docker/compose/main.yaml" \
+    --env-file "$directory/docker/.env" "$@"
+}
+
+check_container_not_running() {
+  local container_name=$1
+  if [ "$(docker inspect -f '{{.State.Running}}' $container_name 2>/dev/null)" != "true" ]; then
+    echo -e "${RED}Warning: Container $container_name is not running or does not exist.${NC}"
+    exit 1
+  else
+    echo -e "${GREEN}Container $container_name is running.${NC}"
+  fi
+}
+
+### ======================================
+### 🗃️ FILESYSTEM HELPERS
+### ======================================
+
+check_file_existence() {
+  local files=("$@")
+  for file in "${files[@]}"; do
+    local full_path="${directory}${file}"
+    if [ ! -f "$full_path" ]; then
+      echo -e "${RED}- Error: $full_path file is missing! Aborting.${NC}"
+      exit 1
+    fi
+  done
+}
+
+ensure_files_exist() {
+  local files=("$@")
+  for file in "${files[@]}"; do
+    local full_path="${directory}${file}"
+    local dir
+    dir=$(dirname "$full_path")
+    if [ ! -d "$dir" ]; then
+      echo -e "${YELLOW}- Creating directory $dir.${NC}"
+      mkdir -p "$dir"
+    fi
+    if [ ! -f "$full_path" ]; then
+      echo -e "${YELLOW}- Creating file $full_path.${NC}"
+      touch "$full_path"
+    fi
+  done
+}
+
+copy_files() {
+  local full_source="${directory}$1"
+  local full_destination="${directory}$2"
+  local exclude_pattern="${4:-}"
+
+  [ ! -d "$full_destination" ] && {
+    echo -e "${YELLOW}- Creating directory $full_destination for copying files.${NC}"
+    mkdir -p "$full_destination"
+  }
+
+  if [ -n "$exclude_pattern" ]; then
+    find "$full_source" -type f -name "$3" ! -name "$exclude_pattern" -exec cp -ua {} "$full_destination" \;
+  else
+    find "$full_source" -type f -name "$3" -exec cp -ua {} "$full_destination" \;
+  fi
+}
+
+### ======================================
+### 🐘 PHP / DOC_ROOT RESOLVER
+### ======================================
+
+find_php_and_doc_root() {
+  local config_file="$1"
+  local php_version=""
+  local doc_root=""
+
+  [ ! -f "$config_file" ] && {
+    echo "File $config_file not found."
+    return 1
+  }
+
+  if grep -q "php[0-9][0-9]" "$config_file"; then
+    php_version=$(grep -oE 'php[0-9]+' "$config_file" | head -n 1)
+  fi
+
+  if grep -q "ProxyPass" "$config_file"; then
+    doc_root=$(grep -oP 'fcgi://[^ ]+/(\S+)' "$config_file" | sed 's|fcgi://[^ ]+||')
+  elif grep -q "fastcgi_param SCRIPT_FILENAME" "$config_file"; then
+    doc_root=$(grep -oP 'fastcgi_param SCRIPT_FILENAME \S+' "$config_file" | sed 's|fastcgi_param SCRIPT_FILENAME ||')
+  fi
+
+  echo "$php_version"
+  echo "$doc_root"
+}
+
+launch_php_container() {
+  local domain="$1"
+  local nginx_conf="$directory/configuration/nginx/$domain.conf"
+  local apache_conf="$directory/configuration/apache/$domain.conf"
+  local doc_root=""
+  local php_container=""
+
+  [ ! -f "$nginx_conf" ] && {
+    echo -e "${RED}No Nginx configuration found for $domain.${NC}"
+    exit 1
+  }
+
+  if grep -q "fastcgi_pass" "$nginx_conf"; then
+    php_container=$(grep -Eo 'fastcgi_pass ([^:]+):9000' "$nginx_conf" | awk '{print $2}' | sed 's/:9000$//')
+    doc_root=$(grep -m1 -Eo 'root [^;]+' "$nginx_conf" | awk '{print $2}')
+  elif grep -q "proxy_pass" "$nginx_conf"; then
+    php_container=$(grep -Eo 'proxy_pass https://([^:]+):443' "$nginx_conf" | awk '{print $2}' | sed 's#https://##' | sed 's/:443$//')
+    [ ! -f "$apache_conf" ] && {
+      echo -e "${RED}No matching Apache configuration found for $domain.${NC}"
+      exit 1
+    }
+    doc_root=$(grep -m1 -Eo 'DocumentRoot [^ ]+' "$apache_conf" | awk '{print $2}')
+  else
+    echo -e "${RED}Could not determine the container setup for $domain.${NC}"
+    exit 1
+  fi
+
+  [ -z "$php_container" ] && {
+    echo -e "${RED}Failed to determine PHP container for $domain.${NC}"
+    exit 1
+  }
+
+  [ -z "$doc_root" ] && {
+    echo -e "${YELLOW}Document root not found for $domain. Defaulting to /app.${NC}"
+    doc_root="/app"
+  }
+
+  docker exec -it "$php_container" bash --login -c "cd \"$doc_root\" && exec bash"
+}
+
+### ======================================
+### 🔐 PERMISSIONS / ENV PROFILE
+### ======================================
+
+assign_permissions() {
+  if [[ "$(uname -s)" == *NT* || "$(uname -o)" =~ (Msys|Cygwin) ]]; then return; fi
+  if [[ "$EUID" -ne 0 ]]; then
+    echo -e "${RED}Please run with sudo.${NC}"; return
+  fi
+
+  chmod 755 "$directory"
+  chmod 775 "$directory/configuration/"
+  find "$directory/configuration/" -type f ! -perm 664 -exec chmod 664 {} \;
+  chmod g+s "$directory/configuration/"
+
+  chmod 755 "$directory/docker/"
+  find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
+  find "$directory/docker/dockerfiles/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
+
+  chmod 775 "$directory/data/"
+  find "$directory/data/" -type f ! -perm 660 -exec chmod 660 {} \;
+  chmod g+s "$directory/data/"
+  chown -R "$USER:docker" "$directory/data/"
+
+  chmod -R 777 "$directory/logs/"
+  chown -R "$USER:docker" "$directory/logs/"
+
+  chmod 755 "$directory/bin/"
+  find "$directory/bin/" -type f ! -perm 744 -exec chmod 744 {} \;
+
+  chmod 744 "$directory/server" "$directory/setup"
+}
+
+modify_compose_profiles() {
+  local env_file="$1"
+  local var_name="$2"
+  local action="$3"
+  shift 3
+  local profiles=("$@")
+
+  local existing_profiles=""
+  if grep -q "^${var_name}=" "$env_file"; then
+    existing_profiles=$(grep "^${var_name}=" "$env_file" | cut -d '=' -f 2 | tr ',' '\n')
+  fi
+
+  local updated_profiles=()
+
+  case "$action" in
+    add)
+      for profile in "${profiles[@]}"; do
+        if ! echo "$existing_profiles" | grep -qx "$profile"; then
+          updated_profiles+=("$profile")
+        fi
+      done
+      updated_profiles+=($existing_profiles)
+      ;;
+    remove)
+      for profile in $existing_profiles; do
+        [[ ! " ${profiles[*]} " =~ " ${profile} " ]] && updated_profiles+=("$profile")
+      done
+      ;;
+    *)
+      echo -e "${RED}Invalid action: $action. Use 'add' or 'remove'.${NC}"
+      return 1
+      ;;
+  esac
+
+  local updated_profiles_str
+  IFS=, updated_profiles_str="${updated_profiles[*]}"
+  update_env "$env_file" "$var_name" "$updated_profiles_str"
+}
+
+install_root_ca() {
+  [ "$EUID" -ne 0 ] && {
+    echo -e "${RED}Error: install_root_ca must be run as root. Try running with sudo.${NC}"
+    return 1
+  }
+
+  local cert_src="$directory/configuration/rootCA/rootCA.pem"
+  local cert_dest="/usr/local/share/ca-certificates/rootCA.crt"
+
+  [ ! -f "$cert_src" ] && {
+    echo -e "${RED}Error: Certificate file '$cert_src' not found.${NC}"
+    return 1
+  }
+
+  cp "$cert_src" "$cert_dest" && echo -e "${GREEN}Copied to '$cert_dest'.${NC}"
+  update-ca-certificates && echo -e "${GREEN}Successfully updated CA certificates.${NC}"
+}

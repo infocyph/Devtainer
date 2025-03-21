@@ -10,151 +10,187 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No color
 
-# Display usage information
-usage() {
-  cat <<EOF
-${CYAN}Usage:${NC}
-$0 {up|start|reload|stop|down|reboot|restart|rebuild|cli|core|tools|lzd|help}
-or
-server {up|start|reload|stop|down|reboot|restart|rebuild|cli|core|tools|lzd|help}
+### Prevent "unbound array" issue
+declare -A descriptions=()
+declare -A options=()
+declare -a positional=()
 
-Commands:
-  ${YELLOW}up${NC}               Start Docker services (foreground)
-  ${YELLOW}start, reload${NC}    Start or reload Docker services (background)
-  ${YELLOW}stop, down${NC}       Stop or shut down Docker services
-  ${YELLOW}reboot, restart${NC}  Restart Docker services
-  ${YELLOW}rebuild${NC}          Rebuild Docker images with no cache
-  ${YELLOW}cli${NC}              Access the PHP container based on a domain configuration
-  ${YELLOW}core${NC}             Access the Core container as 'devuser'
-  ${YELLOW}tools${NC}            Access the SERVER_TOOLS container as 'devuser'
-  ${YELLOW}lzd${NC}              Launch LazyDocker in the SERVER_TOOLS container
-  ${YELLOW}help${NC}             Show this usage guide
-EOF
+### ========== ARGUMENT PARSER ==========
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --*=*) key="${1%%=*}"; val="${1#*=}"; options["$key"]="$val";;
+      --*) options["$1"]=true;;
+      -*) short="${1:1}"; options["-$short"]=true;;
+      *) positional+=("$1");;
+    esac
+    shift
+  done
 }
 
-if [ $# -eq 0 ]; then
-  echo -e "${RED}Error: No command provided.${NC}"
-  usage
-  exit 1
-fi
+### ========== DESCRIPTION PARSER ==========
+get_description() {
+  local fn="cmd_$1"
+  local desc=""
+  
+  if declare -f "$fn" >/dev/null; then
+    desc=$(declare -f "$fn" | grep -Eo '^#\s.*' | head -1 | sed 's/^# //' || true)
+  fi
+  
+  # fallback gracefully, no "unbound" issue due to empty map
+  echo "${desc:-${descriptions[$1]-}}"
+}
 
-source "$directory/docker/utilities/common"
-source "$directory/docker/utilities/main"
-source "$directory/docker/utilities/common"
-source "$directory/docker/utilities/domain"
-source "$directory/docker/utilities/profiles"
-source "$directory/docker/utilities/env"
+### ========== USAGE ==========
+print_usage() {
+  printf "${CYAN}Usage:${NC}\n"
+  printf "$0 <command> [options]\n\n"
+  printf "${CYAN}Available Commands:${NC}\n"
 
-check_required_commands "docker" "readlink"
-check_file_existence "/.env"
-ensure_files_exist \
-  "/docker/.env" \
-  "/configuration/php/php.ini" \
-  "/configuration/scheduler/supervisor-worker.conf" \
-  "/configuration/scheduler/supervisor-logrotate"
-update_env "$directory/docker/.env" "WORKING_DIR" "$directory"
-update_env "$directory/docker/.env" "USER" "$(id -un)"
-#copy_files "/configuration/scheduler/" "/docker/conf/docker-files/cli/" "*" ".gitignore"
+  for cmd in $(declare -F | awk '{print $3}' | grep '^cmd_' | sed 's/^cmd_//'); do
+    printf "  ${YELLOW}%-15s${NC} %s\n" "$cmd" "$(get_description "$cmd")"
+  done
+}
 
-# Handle provided commands
-case "$1" in
-setup)
-  case "$2" in
+### ========== COMMAND DISPATCHER ==========
+run_command() {
+  local command="${1,,}"
+  shift || true
+
+  if declare -f "cmd_${command}" >/dev/null; then
+    "cmd_${command}" "$@"
+  else
+    printf "${RED}Invalid command: %s${NC}\n" "$command"
+    print_usage
+    exit 1
+  fi
+}
+
+### ========== INIT ==========
+init() {
+  source "$directory/docker/utilities/core"
+  source "$directory/docker/utilities/domain"
+  source "$directory/docker/utilities/profiles"
+  source "$directory/docker/utilities/env"
+
+  check_required_commands "docker" "readlink"
+  check_file_existence "/.env"
+  ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
+  update_env "$directory/docker/.env" "WORKING_DIR" "$directory"
+  update_env "$directory/docker/.env" "USER" "$(id -un)"
+}
+
+### ========== COMMANDS ==========
+
+# Start Docker services (foreground)
+cmd_up() { docker_compose up; }
+
+# Start Docker services (background) + reload HTTP
+cmd_start() { docker_compose up -d; reload_http_containers; }
+
+# Alias for start
+cmd_reload() { cmd_start; }
+
+# Stop Docker services
+cmd_stop() { docker_compose down; }
+
+# Alias for stop
+cmd_down() { cmd_stop; }
+
+# Stop & start Docker services
+cmd_reboot() { cmd_stop; cmd_start; }
+
+# Alias for reboot
+cmd_restart() { cmd_reboot; }
+
+# Rebuild Docker images with no cache
+cmd_rebuild() { docker_compose down && docker_compose build --no-cache --pull "${positional[@]:1}"; }
+
+# Validate and show docker-compose config
+cmd_config() { docker_compose config; }
+
+# Access SERVER_TOOLS container
+cmd_tools() { docker exec -it SERVER_TOOLS bash; }
+
+# Launch LazyDocker in SERVER_TOOLS
+cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
+cmd_lazydocker() { cmd_lzd; }
+cmd_lazy-docker() { cmd_lzd; }
+
+# HTTP container management (e.g., reload)
+cmd_http() {
+  [[ "${positional[1]:-}" == "reload" ]] && reload_http_containers
+}
+
+# Access PHP container for a domain
+cmd_core() {
+  if [[ -z "${positional[1]:-}" ]]; then
+    printf "${RED}Please provide a domain (e.g., $0 core test.com).${NC}\n"
+    exit 1
+  fi
+  launch_php_container "${positional[1]}"
+}
+
+# Setup tasks (permissions, domain, profiles, env)
+cmd_setup() {
+  case "${positional[1]:-}" in
     permissions)
       assign_permissions
-      echo -e "${GREEN}Necessary Permissions have been assigned.${NC}"
+      printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
       ;;
     domain)
       while true; do
         configure_server
-        read -e -r -p "$(echo -e "${YELLOW}Do you want to configure another site? (y/n):${NC}") " CONTINUE
-        if [[ "$CONTINUE" != "y" ]]; then
-          break
-        fi
+        read -e -r -p "$(printf "${YELLOW}Do you want to configure another site? (y/n):${NC} ")" CONTINUE
+        [[ "$CONTINUE" != "y" ]] && break
       done
-      echo -e "${GREEN}All configurations have been completed.${NC}"
+      printf "${GREEN}All configurations have been completed.${NC}\n"
       ;;
     profiles)
       prompt_common_vars
       for service in "${!services_and_profiles[@]}"; do
         process_service "$service"
       done
-      echo -e "${GREEN}Setup completed.${NC}"
+      printf "${GREEN}Setup completed.${NC}\n"
       ;;
     env)
-      env_file="$directory/.env"
-      target="${3:-}"
-      if [[ "$target" == "docker" ]]; then
-        env_file="$directory/docker/.env"
-      fi
+      local env_file="$directory/.env"
+      [[ "${positional[2]:-}" == "docker" ]] && env_file="$directory/docker/.env"
       process_env_file "$env_file"
       ;;
     *)
-      echo -e "${RED}Invalid setup command: $2${NC}"
-      usage
-      exit 1
+      printf "${RED}Invalid setup command: %s${NC}\n" "${positional[1]:-}"
       ;;
   esac
-  ;;
-install)
-  case "$2" in
+}
+
+# Install components (e.g., certificate)
+cmd_install() {
+  case "${positional[1]:-}" in
     certificate)
       install_root_ca
       ;;
     *)
-      echo -e "${RED}Invalid install command: $2${NC}"
-      usage
-      exit 1
+      printf "${RED}Invalid install command: %s${NC}\n" "${positional[1]:-}"
       ;;
   esac
-  ;;
-up)
-  docker_compose up
-  ;;
-start | reload)
-  docker_compose up -d
-  reload_http_containers
-  ;;
-stop | down)
-  docker_compose down
-  ;;
-reboot | restart)
-  docker_compose down && docker_compose up -d
-  reload_http_containers
-  ;;
-rebuild)
-  docker_compose down && docker_compose build --no-cache --pull "${@:2}"
-  ;;
-config)
-  docker_compose config
-  ;;
-http)
-  if [[ "$2" == "reload" ]]; then
-    reload_http_containers
-  fi
-  ;;
-core)
-  if [[ -z "$2" ]]; then
-    echo -e "${RED}Please provide a domain (e.g., ./server core test.com).${NC}"
+}
+
+# Display this help message
+cmd_help() { print_usage; }
+
+### ========== MAIN ==========
+main() {
+  if [ $# -eq 0 ]; then
+    printf "${RED}Error: No command provided.${NC}\n"
+    print_usage
     exit 1
   fi
-  launch_php_container "$2"
-  ;;
-tools)
-  docker exec -it SERVER_TOOLS bash
-  ;;
-lzd)
-  docker exec -it SERVER_TOOLS lazydocker
-  ;;
-help)
-  usage
-  ;;
-*)
-  echo -e "${RED}Invalid command: $1${NC}"
-  usage
-  exit 1
-  ;;
-esac
 
-unset directory
+  parse_args "$@"
+  init
+  run_command "${positional[0]}"
+  unset directory
+}
 
+main "$@"

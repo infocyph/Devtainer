@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# Function to validate domain name
+# ==========================================
+# 🌐 DOMAIN VALIDATION + GENERAL PROMPTS
+# ==========================================
+
 function validate_domain() {
   local domain=$1
   local regex="^([a-zA-Z0-9][-a-zA-Z0-9]{0,253}[a-zA-Z0-9]\.)+[a-zA-Z]{2,}$"
@@ -12,10 +15,10 @@ function validate_domain() {
   return 0
 }
 
-# Function to prompt for domain name and validate it
 function prompt_for_domain() {
   while true; do
-    read -e -r -p "$(echo -e "${CYAN}Enter the domain (e.g., example.com):${NC}") " DOMAIN_NAME
+    read -e -r -p "$(echo -e "${CYAN}Enter the domain (e.g., example.com):${NC} ")" DOMAIN_NAME
+    DOMAIN_NAME=$(echo "$DOMAIN_NAME" | xargs)  # Trim spaces
     if validate_domain "$DOMAIN_NAME"; then
       break
     else
@@ -24,32 +27,38 @@ function prompt_for_domain() {
   done
 }
 
-# Function to prompt for server type
+function validate_input() {
+  local input="$1"
+  local message="$2"
+  while [[ -z "$input" ]]; do
+    echo -e "${RED}${message}${NC}"
+    read -e -r input
+  done
+  echo "$input"
+}
+
+# ==========================================
+# ⚙️ SERVER & PROTOCOL SELECTION PROMPTS
+# ==========================================
+
 function choose_server_type() {
   echo -e "${CYAN}Choose the server to configure:${NC}"
-  PS3="Enter the number: "
-  options=("Nginx" "Apache")
-  local server_type
-  select server_type in "${options[@]}"; do
-    case $server_type in
-    "Nginx" | "Apache")
+  PS3="$(echo -e "${YELLOW}👉 Select server type: ${NC}") "
+  select server_type in "Nginx" "Apache"; do
+    if [[ "$server_type" == "Nginx" || "$server_type" == "Apache" ]]; then
       SERVER_TYPE=$server_type
       echo -e "${GREEN}You have selected $server_type.${NC}"
       break
-      ;;
-    *)
+    else
       echo -e "${RED}Invalid option, please select again.${NC}"
-      ;;
-    esac
+    fi
   done
 }
 
-# Function to ask for HTTP or HTTPS or both
 function prompt_for_http_https() {
   echo -e "${CYAN}Choose the type of protocol:${NC}"
-  PS3="Enter the number: "
-  options=("HTTP only" "HTTPS only" "Both HTTP and HTTPS")
-  select choice in "${options[@]}"; do
+  PS3="$(echo -e "${YELLOW}👉 Select option: ${NC}") "
+  select choice in "HTTP only" "HTTPS only" "Both HTTP and HTTPS"; do
     case $choice in
     "HTTP only")
       ENABLE_HTTPS="n"
@@ -65,10 +74,13 @@ function prompt_for_http_https() {
       ;;
     "Both HTTP and HTTPS")
       ENABLE_HTTPS="y"
-      read -e -r -p "$(echo -e "${CYAN}Set up HTTP to HTTPS redirection (y/n)?${NC}") " ENABLE_REDIRECTION
-      if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
+      read -e -r -p "$(echo -e "${CYAN}Set up HTTP to HTTPS redirection? (y/N):${NC} ")" ENABLE_REDIRECTION
+      ENABLE_REDIRECTION=${ENABLE_REDIRECTION,,} # normalize to lowercase
+      if [[ "$ENABLE_REDIRECTION" =~ ^(y|yes)$ ]]; then
+        ENABLE_REDIRECTION="y"
         KEEP_HTTP="n"
       else
+        ENABLE_REDIRECTION="n"
         KEEP_HTTP="y"
       fi
       break
@@ -80,51 +92,45 @@ function prompt_for_http_https() {
   done
 }
 
-# Function to ask for relative document root directory
-function prompt_for_doc_root() {
-  read -e -r -p "$(echo -e "${CYAN}Enter the relative DocumentRoot (e.g., /site):${NC}") " DOC_ROOT
-  DOC_ROOT=$(validate_input "$DOC_ROOT" "DocumentRoot cannot be empty. Please enter a valid DocumentRoot:")
-}
-
-# Function to validate input (not empty)
-function validate_input() {
-  local input="$1"
-  local message="$2"
-  while [[ -z "$input" ]]; do
-    echo -e "$message"
-    read -r input
-  done
-  echo "$input"
-}
-
-# Function to ask for client max body size
-function prompt_for_client_max_body_size() {
-  read -e -r -p "$(echo -e "${CYAN}Enter the maximum client body size (in MB; Default 10):${NC}") " CLIENT_MAX_BODY_SIZE
-
-  # If input is left blank, set default value
-  if [[ -z "$CLIENT_MAX_BODY_SIZE" ]]; then
-    CLIENT_MAX_BODY_SIZE="10" # Default to 10MB if blank
+function prompt_for_client_verification() {
+  read -e -r -p "$(echo -e "${CYAN}Enable client certificate verification (mutual TLS)? (y/N):${NC} ")" client_verif_choice
+  client_verif_choice=${client_verif_choice,,}
+  if [[ "$client_verif_choice" =~ ^(y|yes)$ ]]; then
+    ENABLE_CLIENT_VERIFICATION="ssl_verify_client on;"
+    echo -e "${GREEN}Client certificate verification enabled.${RED} Ensure client certificates are in place.${NC}"
+  else
+    ENABLE_CLIENT_VERIFICATION="ssl_verify_client off;"
+    echo -e "${YELLOW}Client certificate verification disabled.${NC}"
   fi
+}
 
-  # Validate that the input is a number
+# ==========================================
+# 🗃️ FILE & RESOURCE SETUP
+# ==========================================
+
+function prompt_for_doc_root() {
+  read -e -r -p "$(echo -e "${CYAN}Enter the relative DocumentRoot (e.g., /site):${NC} ")" DOC_ROOT
+  DOC_ROOT=$(validate_input "$DOC_ROOT" "DocumentRoot cannot be empty. Please enter a valid DocumentRoot:")
+  DOC_ROOT=$(echo "$DOC_ROOT" | xargs)
+}
+
+function prompt_for_client_max_body_size() {
+  read -e -r -p "$(echo -e "${CYAN}Enter the maximum client body size (MB, default 10):${NC} ")" CLIENT_MAX_BODY_SIZE
+  CLIENT_MAX_BODY_SIZE=${CLIENT_MAX_BODY_SIZE:-10}
+
   while [[ ! "$CLIENT_MAX_BODY_SIZE" =~ ^[0-9]+$ ]]; do
-    echo -e "${RED}Invalid input. Please enter a valid number for client body size (e.g., 12):${NC}"
+    echo -e "${RED}Invalid input. Please enter a valid number (e.g., 12):${NC}"
     read -e -r CLIENT_MAX_BODY_SIZE
   done
 
-  # For Apache, convert to bytes (LimitRequestBody requires bytes)
   CLIENT_MAX_BODY_SIZE_APACHE=$((CLIENT_MAX_BODY_SIZE * 1000000))
-
-  # For Nginx, append 'M'
   CLIENT_MAX_BODY_SIZE="${CLIENT_MAX_BODY_SIZE}M"
 }
 
-# Function to prompt for PHP version
 function prompt_for_php_version() {
   echo -e "${CYAN}Choose the PHP version:${NC}"
-  PS3="Enter the number: "
-  options=("7.3" "7.4" "8.0" "8.1" "8.2" "8.3" "8.4")
-  select PHP_VERSION in "${options[@]}"; do
+  PS3="$(echo -e "${YELLOW}👉 Select PHP version: ${NC}") "
+  select PHP_VERSION in "7.3" "7.4" "8.0" "8.1" "8.2" "8.3" "8.4"; do
     if [[ -n "$PHP_VERSION" ]]; then
       PHP_CONTAINER_PROFILE="php${PHP_VERSION//./}"
       PHP_APACHE_CONTAINER_PROFILE="php${PHP_VERSION//./}apache"
@@ -138,25 +144,14 @@ function prompt_for_php_version() {
   done
 }
 
-# New function: Prompt for enabling client certificate verification (only if HTTPS is enabled)
-function prompt_for_client_verification() {
-  echo -e "${CYAN}Do you want to enable client certificate verification (mutual TLS)? (y/n):${NC}"
-  read -r client_verif_choice
-  if [[ "$client_verif_choice" =~ ^[Yy] ]]; then
-    ENABLE_CLIENT_VERIFICATION="ssl_verify_client on;"
-    echo -e "${GREEN}Client certificate verification enabled ${RED}(Please import the client certificate)${GREEN}.${NC}"
-  else
-    ENABLE_CLIENT_VERIFICATION="ssl_verify_client off;"
-    echo -e "${YELLOW}Client certificate verification disabled.${NC}"
-  fi
-}
+# ==========================================
+# 🏗️ CONFIGURATION GENERATION
+# ==========================================
 
-# Function to generate configuration from template
 function generate_conf_from_template() {
   local template_file=$1
   local output_file=$2
 
-  # Replace placeholders in the template and append to the new conf file
   sed -e "s|{{SERVER_NAME}}|$DOMAIN_NAME|g" \
       -e "s|{{DOC_ROOT}}|$DOC_ROOT|g" \
       -e "s|{{CLIENT_MAX_BODY_SIZE}}|$CLIENT_MAX_BODY_SIZE|g" \
@@ -173,7 +168,6 @@ function create_configuration() {
   local CONFIG_FILE
   local base_template_path="$directory/docker/template"
 
-  # Set configuration file path based on server type
   if [[ "$SERVER_TYPE" == "Nginx" ]]; then
     CONFIG_FILE=$CONFIG_NGINX
     modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "${PHP_CONTAINER_PROFILE}"
@@ -185,7 +179,6 @@ function create_configuration() {
     return 1
   fi
 
-  # Handle HTTP configuration
   if [[ "$ENABLE_REDIRECTION" == "y" ]]; then
     generate_conf_from_template "$base_template_path/redirect.nginx.conf" "$directory/$CONFIG_NGINX"
   elif [[ "$KEEP_HTTP" == "y" || "$ENABLE_HTTPS" == "n" ]]; then
@@ -193,19 +186,20 @@ function create_configuration() {
     generate_conf_from_template "$base_template_path/http.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
   fi
 
-  # Handle HTTPS configuration
   if [[ "$ENABLE_HTTPS" == "y" ]]; then
     [[ "$SERVER_TYPE" == "Apache" ]] && generate_conf_from_template "$base_template_path/proxy-https.nginx.conf" "$directory/$CONFIG_NGINX"
     generate_conf_from_template "$base_template_path/https.${SERVER_TYPE,,}.conf" "$directory/$CONFIG_FILE"
 
-    # Issue SSL certificate
     docker ps --filter "name=SERVER_TOOLS" --format '{{.Names}}' | grep -q "^SERVER_TOOLS$" && docker exec -it SERVER_TOOLS certify
   fi
 
   echo -e "\n${GREEN}Configuration for ${DOMAIN_NAME} has been saved.${NC}"
 }
 
-# Start the script
+# ==========================================
+# 🚀 MAIN ENTRYPOINT
+# ==========================================
+
 function configure_server() {
   show_step 1 7
   prompt_for_domain
@@ -220,7 +214,6 @@ function configure_server() {
   show_step 6 7
   prompt_for_php_version
 
-  # Only prompt for client verification if HTTPS is enabled
   if [[ "$ENABLE_HTTPS" == "y" ]]; then
     show_step 7 7
     prompt_for_client_verification

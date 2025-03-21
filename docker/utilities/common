@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# replaced by core
 # Function to show step number on the same line
 function show_step() {
     local current_step=$1

@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# replaced by core
 # Load .env function (if necessary)
 loadEnv() {
   (set -a && . "${directory}/.env" && "$@")
