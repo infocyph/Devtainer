@@ -22,8 +22,9 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat boxes figlet locales ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
+    sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen en_US.UTF-8 && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
     mkdir -p /etc/share/rootCA /etc/mkcert && \
@@ -31,6 +32,9 @@ RUN set -eux; \
     echo "ServerName localdock" >> /etc/apache2/apache2.conf && \
     a2enmod rewrite ssl socache_shmcb headers setenvif && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
 
 # Install Node.js and npm globally if requested
 ARG NODE_VERSION
@@ -45,7 +49,8 @@ RUN set -eux; \
 
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
 COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
+COPY scripts/banner.sh /usr/local/bin/show-banner
+RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh /usr/local/bin/show-banner
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -69,5 +74,6 @@ RUN set -eux; \
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/alias-maker.sh apache-php ${USERNAME} && \
-    sudo /usr/local/bin/cli-setup.sh "     Container: PHP ${PHP_VERSION} with Apache" ${USERNAME}
+    sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
+    echo 'show-banner "LocalDock" "Container: PHP ${PHP_VERSION} with Apache"' >> ~/.bashrc
 WORKDIR /app
