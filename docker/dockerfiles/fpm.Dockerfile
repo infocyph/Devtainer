@@ -15,20 +15,21 @@ ARG LINUX_PKG
 ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
 ARG PHP_EXT_VERSIONED
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat figlet locales boxes ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
+    sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen en_US.UTF-8 && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
-    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
-RUN sed -i 's/^listen = .*/listen = 0.0.0.0:9000/' /usr/local/etc/php-fpm.d/zz-docker.conf
+    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/* && \
+    sed -i 's/^listen = .*/listen = 0.0.0.0:9000/' /usr/local/etc/php-fpm.d/zz-docker.conf
 
-# Set environment
-ENV COMPOSER_ALLOW_SUPERUSER=1
-ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
 
 # Install Node.js and npm globally if requested
 ARG NODE_VERSION
@@ -42,8 +43,8 @@ RUN set -eux; \
     fi
 
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
+COPY scripts/banner.sh /usr/local/bin/show-banner
+RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -66,6 +67,6 @@ RUN set -eux; \
 
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sudo /usr/local/bin/alias-maker.sh fpm ${USERNAME} && \
-    sudo /usr/local/bin/cli-setup.sh "        Container: PHP-FPM ${PHP_VERSION}" ${USERNAME}
+    sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
+    echo 'show-banner "LocalDock" "Container: PHP-FPM ${PHP_VERSION}"' >> ~/.bashrc
 WORKDIR /app

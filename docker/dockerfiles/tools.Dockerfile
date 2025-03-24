@@ -5,17 +5,21 @@ LABEL org.opencontainers.image.description="Tools"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 
-RUN set -eux; \
-    apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates fzf autojump bash-completion \
-    net-tools libnss3-tools iputils-ping nano && \
-    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
-
 # Set environment for Composer
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ENV CAROOT=/etc/share/rootCA
 ARG USERNAME=dockery
 ENV USERNAME=${USERNAME}
+
+RUN set -eux; \
+    apt update && apt upgrade -y && \
+    apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates figlet locales fzf autojump bash-completion \
+    net-tools libnss3-tools iputils-ping nano && \
+    sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen en_US.UTF-8 && \
+    apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
 
 # Install mkcert
 RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
@@ -29,8 +33,8 @@ RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scrip
 
 COPY scripts/certify.sh /usr/local/bin/certify
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
-RUN chmod +x /usr/local/bin/certify /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh
+COPY scripts/banner.sh /usr/local/bin/show-banner
+RUN chmod +x /usr/local/bin/certify /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -57,7 +61,7 @@ RUN set -eux; \
 
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sudo /usr/local/bin/alias-maker.sh tools ${USERNAME} && \
-    sudo /usr/local/bin/cli-setup.sh "             Container: Tools" ${USERNAME}
+    sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
+    echo 'show-banner "LocalDock" "Container: Tools"' >> ~/.bashrc
 WORKDIR /app
 CMD ["/bin/bash", "-c", "/usr/local/bin/certify && tail -f /dev/null"]

@@ -3,7 +3,7 @@ ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-apache
 
 LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
-LABEL org.opencontainers.image.description="PHP APACHE"
+LABEL org.opencontainers.image.description="PHP APACHE NODE"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 
@@ -16,7 +16,6 @@ ARG LINUX_PKG_VERSIONED
 ARG PHP_EXT
 ARG PHP_EXT_VERSIONED
 ENV APACHE_LOG_DIR=/var/log/apache2
-ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
@@ -48,9 +47,8 @@ RUN set -eux; \
     fi
 
 COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
 COPY scripts/banner.sh /usr/local/bin/show-banner
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/alias-maker.sh /usr/local/bin/show-banner
+RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -73,7 +71,6 @@ RUN set -eux; \
 
 USER ${USERNAME}
 RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
-    sudo /usr/local/bin/alias-maker.sh apache-php ${USERNAME} && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
     echo 'show-banner "LocalDock" "Container: PHP ${PHP_VERSION} with Apache"' >> ~/.bashrc
 WORKDIR /app

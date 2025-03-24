@@ -177,8 +177,9 @@ find_php_and_doc_root() {
 
 launch_php_container() {
   local domain="$1"
+  # Assuming $directory is defined globally.
   local nginx_conf="$directory/configuration/nginx/$domain.conf"
-  local apache_conf="$directory/configuration/apache/$domain.conf"
+  local apache_conf=""
   local doc_root=""
   local php_container=""
 
@@ -192,11 +193,23 @@ launch_php_container() {
     doc_root=$(grep -m1 -Eo 'root [^;]+' "$nginx_conf" | awk '{print $2}')
   elif grep -q "proxy_pass" "$nginx_conf"; then
     php_container=$(grep -Eo 'proxy_pass https://([^:]+):443' "$nginx_conf" | awk '{print $2}' | sed 's#https://##' | sed 's/:443$//')
-    [ ! -f "$apache_conf" ] && {
+    # Search for Apache configuration file in the new location:
+    # $directory/configuration/apache/<version>/$domain.conf
+    apache_conf=$(find "$directory/configuration/apache" -mindepth 2 -maxdepth 2 -type f -name "$domain.conf" | head -n 1)
+    [ -z "$apache_conf" ] && {
       echo -e "${RED}No matching Apache configuration found for $domain.${NC}"
       exit 1
     }
     doc_root=$(grep -m1 -Eo 'DocumentRoot [^ ]+' "$apache_conf" | awk '{print $2}')
+
+    # Extract the version directory from the path, e.g. "php74" or "php82"
+    local version_dir
+    version_dir=$(basename "$(dirname "$apache_conf")")
+    # Convert version_dir (e.g. "php74") to a version string ("7.4")
+    local version
+    version=$(echo "$version_dir" | sed -E 's/php([0-9])([0-9])/\1.\2/')
+    # For Apache, derive the container name as "PHP_<version>_APACHE"
+    php_container="PHP_${version}_APACHE"
   else
     echo -e "${RED}Could not determine the container setup for $domain.${NC}"
     exit 1
@@ -214,6 +227,7 @@ launch_php_container() {
 
   docker exec -it "$php_container" bash --login -c "cd \"$doc_root\" && exec bash"
 }
+
 
 ### ======================================
 ### 🔐 PERMISSIONS / ENV PROFILE

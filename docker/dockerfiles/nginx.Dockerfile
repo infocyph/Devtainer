@@ -9,11 +9,10 @@ LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 # Copy the update script into the container
 COPY scripts/fcgi-params.sh /usr/local/bin/fcgi_params.sh
 COPY scripts/proxy-params.sh /usr/local/bin/proxy_params.sh
-COPY scripts/alias-maker.sh /usr/local/bin/alias-maker.sh
 
 # Set execute permissions for the script
 RUN mkdir -p /etc/share/rootCA /etc/mkcert && \
-    chmod +x /usr/local/bin/fcgi_params.sh /usr/local/bin/proxy_params.sh /usr/local/bin/alias-maker.sh && \
+    chmod +x /usr/local/bin/fcgi_params.sh /usr/local/bin/proxy_params.sh && \
     /usr/local/bin/fcgi_params.sh && /usr/local/bin/proxy_params.sh
 
 # Expose ports
