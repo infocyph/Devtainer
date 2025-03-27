@@ -14,7 +14,7 @@ ENV USERNAME=${USERNAME}
 RUN set -eux; \
     apt update && apt upgrade -y && \
     apt install --no-install-recommends -y curl git lolcat boxes wget ca-certificates figlet locales fzf autojump bash-completion \
-    net-tools libnss3-tools iputils-ping nano && \
+    net-tools libnss3-tools iputils-ping nano btop tmux ncdu jq tree nmap && \
     sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen en_US.UTF-8 && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
@@ -27,14 +27,14 @@ RUN curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64" && \
     chmod +x /usr/local/bin/mkcert && \
     mkdir -p /etc/mkcert
 
-# lazydocker
+# Install lazydocker
 ENV DIR=/usr/local/bin
 RUN curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
 
-COPY scripts/certify.sh /usr/local/bin/certify
-COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/banner.sh /usr/local/bin/show-banner
-RUN chmod +x /usr/local/bin/certify /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/certify.sh /usr/local/bin/certify
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setup.sh /usr/local/bin/cli-setup.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
+ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -49,19 +49,22 @@ RUN set -eux; \
     else \
         UPDATED_UID=$UID; \
     fi && \
-    useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     apt update && apt install --no-install-recommends -y sudo && \
+    useradd -G ${GID} -u ${UPDATED_UID} -d /home/${USERNAME} ${USERNAME} && \
     mkdir -p /home/${USERNAME}/.composer/vendor \
-    /etc/share/rootCA \
-    /etc/share/vhosts/apache \
-    /etc/share/vhosts/nginx && \
+             /etc/share/rootCA \
+             /etc/share/vhosts/apache \
+             /etc/share/vhosts/nginx && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} && \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx  /usr/local/bin/certify && \
+    sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx  /usr/local/bin/certify && \
+    curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
     echo 'show-banner "LocalDock" "Container: Tools"' >> ~/.bashrc
+
 WORKDIR /app
 CMD ["/bin/bash", "-c", "/usr/local/bin/certify && tail -f /dev/null"]

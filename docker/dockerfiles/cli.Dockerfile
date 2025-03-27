@@ -35,12 +35,12 @@ ENV LANG en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
 # Copy scripts and static supervisor config
-COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/supervisord.conf /etc/supervisor/supervisord.conf
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setup.sh /usr/local/bin/cli-setup.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/confs/supervisord.conf /etc/supervisor/supervisord.conf
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/logrotate-worker.sh /usr/local/bin/logrotate-worker.sh
+ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
 COPY scripts/logrotate-logs /etc/logrotate.d/logrotate-logs
-COPY scripts/logrotate-worker.sh /usr/local/bin/logrotate-worker.sh
-
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/logrotate-worker.sh
 
 # Add non-root user and sudoer setup
 ARG UID=1000
@@ -63,7 +63,9 @@ RUN set -eux; \
 
 # User environment setup (bash theme, aliases, etc.)
 USER ${USERNAME}
-RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
+    sudo chmod +x  /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
+    curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
     echo 'show-banner "${BANNER_TITLE}" "Container: PHP-CLI ${PHP_VERSION}"' >> ~/.bashrc
 

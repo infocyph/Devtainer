@@ -7,8 +7,8 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 
 # Copy the update script into the container
-COPY scripts/fcgi-params.sh /usr/local/bin/fcgi_params.sh
-COPY scripts/proxy-params.sh /usr/local/bin/proxy_params.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/fcgi-params.sh /usr/local/bin/fcgi_params.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/proxy-params.sh /usr/local/bin/proxy_params.sh
 
 # Set execute permissions for the script
 RUN mkdir -p /etc/share/rootCA /etc/mkcert && \

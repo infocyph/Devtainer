@@ -46,9 +46,9 @@ RUN set -eux; \
         apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*; \
     fi
 
-COPY scripts/cli-setup.sh /usr/local/bin/cli-setup.sh
-COPY scripts/banner.sh /usr/local/bin/show-banner
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setup.sh /usr/local/bin/cli-setup.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
+ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
 
 # Add a system user and install sudo
 ARG UID=1000
@@ -70,7 +70,9 @@ RUN set -eux; \
     apt clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 USER ${USERNAME}
-RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx && \
+    sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx && \
+    curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
     echo 'show-banner "LocalDock" "Container: PHP ${PHP_VERSION} with Apache"' >> ~/.bashrc
 WORKDIR /app
