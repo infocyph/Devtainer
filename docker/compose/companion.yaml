@@ -41,3 +41,4 @@ services:
       - "${PROJECT_DIR:-./../../../application}:/app"
       - ../../configuration/scheduler:/etc/supervisor/conf.d:ro
       - ../../logs/runner/supervisor:/var/log/supervisor
+      - /var/run/docker.sock:/var/run/docker.sock
