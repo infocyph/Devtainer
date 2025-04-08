@@ -6,13 +6,6 @@ x-php-cli-service: &php-cli-service
     - "../../.env"
   networks:
     - backend
-  volumes:
-    - /etc/localtime:/etc/localtime:ro
-    - /etc/timezone:/etc/timezone:ro
-    - "${PROJECT_DIR:-./../../../application}:/app"
-    - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
-    - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
-    - "../../configuration/ssh:/home/${USER}/.ssh:ro"
   extra_hosts:
     - "host.docker.internal:host-gateway"
   depends_on:
@@ -37,10 +30,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_73:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_73:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php73:/etc/supervisor/conf.d:ro
+      - ../../logs/cli73/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php73-cli
+      - php73cli
 
   php74cli:
     <<: *php-cli-service
@@ -60,10 +60,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_74:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_74:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php74:/etc/supervisor/conf.d:ro
+      - ../../logs/cli74/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php74-cli
+      - php74cli
 
   php80cli:
     <<: *php-cli-service
@@ -84,10 +91,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_80:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_80:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php80:/etc/supervisor/conf.d:ro
+      - ../../logs/cli80/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php80-cli
+      - php80cli
 
   php81cli:
     <<: *php-cli-service
@@ -108,10 +122,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_81:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_81:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php81:/etc/supervisor/conf.d:ro
+      - ../../logs/cli81/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php81-cli
+      - php81cli
 
   php82cli:
     <<: *php-cli-service
@@ -132,10 +153,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_82:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_82:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php82:/etc/supervisor/conf.d:ro
+      - ../../logs/cli82/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php82-cli
+      - php82cli
 
   php83cli:
     <<: *php-cli-service
@@ -156,10 +184,17 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_83:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_83:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php83:/etc/supervisor/conf.d:ro
+      - ../../logs/cli83/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php83-cli
+      - php83cli
 
   php84cli:
     <<: *php-cli-service
@@ -180,7 +215,14 @@ services:
         PHP_EXT_VERSIONED: ${PHP_EXT_84:-}
         LINUX_PKG_VERSIONED: ${LINUX_PKG_84:-}
     volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
+      - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
+      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - ../../configuration/scheduler/php84:/etc/supervisor/conf.d:ro
+      - ../../logs/cli84/supervisor:/var/log/supervisor
     profiles:
       - php-cli
-      - php84-cli
+      - php84cli

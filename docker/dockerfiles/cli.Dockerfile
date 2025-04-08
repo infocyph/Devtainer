@@ -63,11 +63,14 @@ RUN set -eux; \
 
 # User environment setup (bash theme, aliases, etc.)
 USER ${USERNAME}
-RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
-    sudo chmod +x  /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
+RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx \
+    /usr/local/bin/logrotate-worker.sh /etc/supervisor/supervisord.conf /var/log/supervisor && \
+    sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
+    sudo chmod 644 /etc/supervisor/supervisord.conf && \
+    sudo chmod 775 /var/log/supervisor && \
     curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
-    echo 'show-banner "${BANNER_TITLE}" "Container: PHP-CLI ${PHP_VERSION}"' >> ~/.bashrc
+    echo 'show-banner "LocalDock" "Container: PHP-CLI ${PHP_VERSION}"' >> ~/.bashrc
 
 WORKDIR /app
 

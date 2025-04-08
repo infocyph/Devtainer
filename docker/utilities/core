@@ -259,7 +259,7 @@ assign_permissions() {
   chmod 755 "$directory/bin/"
   find "$directory/bin/" -type f ! -perm 744 -exec chmod 744 {} \;
 
-  chmod 744 "$directory/server" "$directory/setup"
+  chmod 744 "$directory/server"
 }
 
 modify_compose_profiles() {

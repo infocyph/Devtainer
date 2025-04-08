@@ -24,3 +24,20 @@ services:
       - /etc/timezone:/etc/timezone
     networks:
       - backend
+
+  runner:
+    container_name: RUNNER
+    hostname: runner
+    user: ${UID:-1000}:${GID:-root}
+    build:
+      context: ../dockerfiles
+      dockerfile: runner.Dockerfile
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-}
+    volumes:
+      - /etc/localtime:/etc/localtime
+      - /etc/timezone:/etc/timezone
+      - "${PROJECT_DIR:-./../../../application}:/app"
+      - ../../configuration/scheduler:/etc/supervisor/conf.d:ro
+      - ../../logs/runner/supervisor:/var/log/supervisor
