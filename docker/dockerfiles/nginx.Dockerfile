@@ -1,8 +1,8 @@
-ARG NGINX_VERSION
+ARG NGINX_VERSION=latest
 FROM nginx:${NGINX_VERSION:-latest}
 
 LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
-LABEL org.opencontainers.image.description="NGINX with updated FastCGI params"
+LABEL org.opencontainers.image.description="NGINX with updated params"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 

@@ -1,9 +1,8 @@
-# Use ARG to define the PHP version (with default)
 ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-cli
 
 LABEL org.opencontainers.image.source="https://github.com/infocyph/LocalDock"
-LABEL org.opencontainers.image.description="PHP CLI Supervisor"
+LABEL org.opencontainers.image.description="PHP CLI"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="infocyph,abmmhasan"
 

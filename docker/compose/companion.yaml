@@ -28,9 +28,7 @@ services:
   runner:
     container_name: RUNNER
     hostname: runner
-    build:
-      context: ../dockerfiles
-      dockerfile: runner.Dockerfile
+    image: infocyph/runner:latest
     restart: unless-stopped
     environment:
       - TZ=${TZ:-}
