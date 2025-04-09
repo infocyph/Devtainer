@@ -40,5 +40,6 @@ services:
       - "${PROJECT_DIR:-./../../../application}:/app"
       - ../../configuration/scheduler/supervisor:/etc/supervisor/conf.d:ro
       - ../../configuration/scheduler/cron-jobs:/etc/cron.d:ro
+      - ../../configuration/logrotator:/etc/logrotate.d:ro
       - ../../logs/runner/supervisor:/var/log/supervisor
       - /var/run/docker.sock:/var/run/docker.sock

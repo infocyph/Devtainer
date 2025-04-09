@@ -16,7 +16,6 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/confs/supervisord.conf /etc/supervisor/supervisord.conf
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/logrotate-worker.sh /usr/local/bin/logrotate-worker.sh
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/dexec-php.sh /usr/local/bin/dexec
-COPY scripts/logrotate-logs /etc/logrotate.d/logrotate-logs
 
 # Set execute permissions for scripts and adjust file/directory permissions
 RUN chmod +x /usr/local/bin/logrotate-worker.sh /usr/local/bin/dexec && \
