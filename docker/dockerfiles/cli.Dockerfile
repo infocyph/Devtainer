@@ -22,12 +22,11 @@ ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/do
 
 RUN set -eux; \
     apt update && apt upgrade -y && \
-    apt install --no-install-recommends -y curl git lolcat boxes figlet locales supervisor logrotate ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apt install --no-install-recommends -y curl git lolcat boxes figlet locales ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen en_US.UTF-8 && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
-    mkdir -p /var/log/supervisor /etc/supervisor/conf.d && \
     apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
@@ -36,11 +35,8 @@ ENV LC_ALL en_US.UTF-8
 
 # Copy scripts and static supervisor config
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setup.sh /usr/local/bin/cli-setup.sh
-ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/confs/supervisord.conf /etc/supervisor/supervisord.conf
-ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/logrotate-worker.sh /usr/local/bin/logrotate-worker.sh
 ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
-COPY scripts/logrotate-logs /etc/logrotate.d/logrotate-logs
 
 # Add non-root user and sudoer setup
 ARG UID=1000
@@ -63,16 +59,10 @@ RUN set -eux; \
 
 # User environment setup (bash theme, aliases, etc.)
 USER ${USERNAME}
-RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx \
-    /usr/local/bin/logrotate-worker.sh /etc/supervisor/supervisord.conf /var/log/supervisor && \
-    sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/logrotate-worker.sh && \
-    sudo chmod 644 /etc/supervisor/supervisord.conf && \
-    sudo chmod 775 /var/log/supervisor && \
+RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx && \
+    sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx && \
     curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
     echo 'show-banner "LocalDock" "Container: PHP-CLI ${PHP_VERSION}"' >> ~/.bashrc
 
 WORKDIR /app
-
-# Supervisor entrypoint
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

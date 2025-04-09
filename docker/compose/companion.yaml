@@ -28,7 +28,6 @@ services:
   runner:
     container_name: RUNNER
     hostname: runner
-    user: ${UID:-1000}:${GID:-root}
     build:
       context: ../dockerfiles
       dockerfile: runner.Dockerfile
