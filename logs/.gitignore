@@ -2,4 +2,5 @@
 !runner
 !apache
 !nginx
+!olds
 !.gitignore

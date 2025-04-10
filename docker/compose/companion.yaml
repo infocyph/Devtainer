@@ -2,19 +2,13 @@ services:
   server-tools:
     container_name: SERVER_TOOLS
     hostname: local-dock
-    build:
-      context: ../dockerfiles
-      dockerfile: tools.Dockerfile
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-root}
-        USERNAME: ${USER}
+    image: infocyph/tools:latest
     restart: unless-stopped
     environment:
       - TZ=${TZ:-}
     volumes:
-      - ../../configuration/apache:/etc/share/vhosts/apache
-      - ../../configuration/nginx:/etc/share/vhosts/nginx
+      - ../../configuration/apache:/etc/share/vhosts/apache:ro
+      - ../../configuration/nginx:/etc/share/vhosts/nginx:ro
       - ../../configuration/ssl:/etc/mkcert
       - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - "${PROJECT_DIR:-./../../../application}:/app"
@@ -35,9 +29,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime
       - /etc/timezone:/etc/timezone
-      - "${PROJECT_DIR:-./../../../application}:/app"
       - ../../configuration/scheduler/supervisor:/etc/supervisor/conf.d:ro
       - ../../configuration/scheduler/cron-jobs:/etc/cron.d:ro
-      - ../../configuration/logrotator:/etc/logrotate.d:ro
-      - ../../logs/runner/supervisor:/var/log/supervisor
+      - ../../logs/runner:/var/log/supervisor
+      - ../../logs/apache:/global/log/apache
+      - ../../logs/nginx:/global/log/nginx
       - /var/run/docker.sock:/var/run/docker.sock
