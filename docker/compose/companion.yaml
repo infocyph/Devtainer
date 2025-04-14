@@ -7,8 +7,8 @@ services:
     environment:
       - TZ=${TZ:-}
     volumes:
-      - ../../configuration/apache:/etc/share/vhosts/apache:ro
-      - ../../configuration/nginx:/etc/share/vhosts/nginx:ro
+      - ../../configuration/apache:/etc/share/vhosts/apache
+      - ../../configuration/nginx:/etc/share/vhosts/nginx
       - ../../configuration/ssl:/etc/mkcert
       - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - "${PROJECT_DIR:-./../../../application}:/app"

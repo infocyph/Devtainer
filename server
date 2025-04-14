@@ -69,7 +69,6 @@ run_command() {
 ### ========== INIT ==========
 init() {
   source "$directory/docker/utilities/core"
-  source "$directory/docker/utilities/domain"
   source "$directory/docker/utilities/profiles"
 
   check_required_commands "docker" "readlink"
@@ -138,12 +137,10 @@ cmd_setup() {
       printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
       ;;
     domain)
-      while true; do
-        configure_server
-        read -e -r -p "$(printf "${YELLOW}Do you want to configure another site? (y/n):${NC} ")" CONTINUE
-        [[ "$CONTINUE" != "y" ]] && break
-      done
-      printf "${GREEN}All configurations have been completed.${NC}\n"
+      profile=$(docker exec -it SERVER_TOOLS mkhost)
+      if [[ $? -eq 0 && -n "$profile" ]]; then
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$profile"
+      fi
       ;;
     profiles)
       prompt_common_vars

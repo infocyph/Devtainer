@@ -16,7 +16,5 @@ include:
 #  - docker/compose/mongo.yaml
 #  - docker/compose/elasticsearch.yaml
 #  - docker/compose/redis.yaml
-  - docker/compose/php-cli.yaml
-  - docker/compose/php-fpm.yaml
-  - docker/compose/php-apache.yaml
+  - docker/compose/php.yaml
   - docker/compose/http.yaml

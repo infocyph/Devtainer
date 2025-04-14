@@ -70,5 +70,5 @@ RUN sudo chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bi
     sudo chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx && \
     curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
-    echo 'show-banner "LocalDock" "Container: PHP-FPM ${PHP_VERSION}"' >> ~/.bashrc
+    echo 'show-banner "LocalDock" "PHP ${PHP_VERSION}"' >> ~/.bashrc
 WORKDIR /app
