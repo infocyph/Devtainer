@@ -137,9 +137,14 @@ cmd_setup() {
       printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
       ;;
     domain)
-      profile=$(docker exec -it SERVER_TOOLS mkhost)
-      if [[ $? -eq 0 && -n "$profile" ]]; then
-        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$profile"
+      docker exec -it SERVER_TOOLS mkhost
+      local pprofile=$(docker exec SERVER_TOOLS mkhost --ACTIVE_PHP_PROFILE)
+      if [[ $? -eq 0 && -n "pprofile" ]]; then
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$pprofile"
+      fi
+      local sprofile=$(docker exec SERVER_TOOLS mkhost --APACHE_ACTIVE)
+      if [[ $? -eq 0 && -n "sprofile" ]]; then
+        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$sprofile"
       fi
       ;;
     profiles)
