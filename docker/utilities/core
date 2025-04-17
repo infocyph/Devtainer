@@ -1,35 +1,5 @@
 #!/bin/bash
 
-# ===========================================================
-# 📄 FUNCTION INDEX
-# ===========================================================
-# show_step()                      - Display step progress in a script
-# check_required_commands()        - Check if required commands are installed
-# update_env()                     - Update or add environment variables in .env
-# reload_http_containers()         - Reload Nginx and Apache Docker containers
-# check_file_existence()           - Check if given files exist
-# ensure_files_exist()             - Ensure given files and their directories exist
-# copy_files()                     - Copy files with optional exclusion patterns
-# docker_compose()                 - Wrapper for docker compose with project/env config
-# find_php_and_doc_root()          - Extract PHP version and DOC_ROOT from config files
-# launch_php_container()           - Launch PHP container for a specified domain
-# assign_permissions()             - Assign standard permissions to project directories
-# check_container_not_running()    - Check if a Docker container is not running
-# modify_compose_profiles()        - Add or remove Docker Compose profiles in .env
-# install_root_ca()                - Install mkcert Root CA to system certificates
-# ===========================================================
-
-
-### ======================================
-### 🟢 CLI UX HELPERS
-### ======================================
-
-show_step() {
-  local current_step=$1
-  local total_steps=$2
-  echo -ne "${YELLOW}Step $current_step of $total_steps: ${NC}"
-}
-
 check_required_commands() {
   local commands=("$@")
   for cmd in "${commands[@]}"; do
@@ -39,10 +9,6 @@ check_required_commands() {
     fi
   done
 }
-
-### ======================================
-### ⚙️ ENV & CONFIG HELPERS
-### ======================================
 
 update_env() {
   local env_file="$1"
@@ -63,10 +29,6 @@ update_env() {
   fi
 }
 
-### ======================================
-### 🌐 DOCKER & HTTP HELPERS
-### ======================================
-
 reload_http_containers() {
   echo -e "${GREEN}- Reloading HTTP...${NC}"
   if docker ps -q -f name=NGINX &>/dev/null; then
@@ -83,20 +45,6 @@ docker_compose() {
     -f "$directory/docker/compose/main.yaml" \
     --env-file "$directory/docker/.env" "$@"
 }
-
-check_container_not_running() {
-  local container_name=$1
-  if [ "$(docker inspect -f '{{.State.Running}}' $container_name 2>/dev/null)" != "true" ]; then
-    echo -e "${RED}Warning: Container $container_name is not running or does not exist.${NC}"
-    exit 1
-  else
-    echo -e "${GREEN}Container $container_name is running.${NC}"
-  fi
-}
-
-### ======================================
-### 🗃️ FILESYSTEM HELPERS
-### ======================================
 
 check_file_existence() {
   local files=("$@")
@@ -124,51 +72,6 @@ ensure_files_exist() {
       touch "$full_path"
     fi
   done
-}
-
-copy_files() {
-  local full_source="${directory}$1"
-  local full_destination="${directory}$2"
-  local exclude_pattern="${4:-}"
-
-  [ ! -d "$full_destination" ] && {
-    echo -e "${YELLOW}- Creating directory $full_destination for copying files.${NC}"
-    mkdir -p "$full_destination"
-  }
-
-  if [ -n "$exclude_pattern" ]; then
-    find "$full_source" -type f -name "$3" ! -name "$exclude_pattern" -exec cp -ua {} "$full_destination" \;
-  else
-    find "$full_source" -type f -name "$3" -exec cp -ua {} "$full_destination" \;
-  fi
-}
-
-### ======================================
-### 🐘 PHP / DOC_ROOT RESOLVER
-### ======================================
-
-find_php_and_doc_root() {
-  local config_file="$1"
-  local php_version=""
-  local doc_root=""
-
-  [ ! -f "$config_file" ] && {
-    echo "File $config_file not found."
-    return 1
-  }
-
-  if grep -q "php[0-9][0-9]" "$config_file"; then
-    php_version=$(grep -oE 'php[0-9]+' "$config_file" | head -n 1)
-  fi
-
-  if grep -q "ProxyPass" "$config_file"; then
-    doc_root=$(grep -oP 'fcgi://[^ ]+/(\S+)' "$config_file" | sed 's|fcgi://[^ ]+||')
-  elif grep -q "fastcgi_param SCRIPT_FILENAME" "$config_file"; then
-    doc_root=$(grep -oP 'fastcgi_param SCRIPT_FILENAME \S+' "$config_file" | sed 's|fastcgi_param SCRIPT_FILENAME ||')
-  fi
-
-  echo "$php_version"
-  echo "$doc_root"
 }
 
 launch_php_container() {
@@ -212,10 +115,6 @@ launch_php_container() {
   docker exec -it "$php_container" bash --login -c "cd \"$doc_root\" && exec bash"
 }
 
-### ======================================
-### 🔐 PERMISSIONS / ENV PROFILE
-### ======================================
-
 assign_permissions() {
   if [[ "$(uname -s)" == *NT* || "$(uname -o)" =~ (Msys|Cygwin) ]]; then return; fi
   if [[ "$EUID" -ne 0 ]]; then
@@ -252,52 +151,78 @@ modify_compose_profiles() {
   shift 3
   local profiles=("$@")
 
+  # pull out existing, newline‑separated
   local existing_profiles=""
   if grep -q "^${var_name}=" "$env_file"; then
-    existing_profiles=$(grep "^${var_name}=" "$env_file" | cut -d '=' -f 2 | tr ',' '\n')
+    existing_profiles=$(grep "^${var_name}=" "$env_file" \
+                      | cut -d '=' -f 2 \
+                      | tr ',' '\n')
   fi
 
   local updated_profiles=()
 
   case "$action" in
     add)
-      for profile in "${profiles[@]}"; do
-        if ! echo "$existing_profiles" | grep -qx "$profile"; then
-          updated_profiles+=("$profile")
+      # add any new ones
+      for p in "${profiles[@]}"; do
+        if ! grep -qx "$p" <<<"$existing_profiles"; then
+          updated_profiles+=("$p")
         fi
       done
-      updated_profiles+=($existing_profiles)
+      # then re‑append the old ones
+      while IFS= read -r old; do
+        updated_profiles+=("$old")
+      done <<<"$existing_profiles"
       ;;
     remove)
-      for profile in $existing_profiles; do
-        [[ ! " ${profiles[*]} " =~ " ${profile} " ]] && updated_profiles+=("$profile")
+      for old in $existing_profiles; do
+        [[ ! " ${profiles[*]} " =~ " ${old} " ]] && updated_profiles+=("$old")
       done
       ;;
     *)
-      echo -e "${RED}Invalid action: $action. Use 'add' or 'remove'.${NC}"
+      echo -e "${RED}Invalid action: $action${NC}"
       return 1
       ;;
   esac
 
+  # join with commas
   local updated_profiles_str
-  IFS=, updated_profiles_str="${updated_profiles[*]}"
+  updated_profiles_str=$(IFS=,; echo "${updated_profiles[*]}")
   update_env "$env_file" "$var_name" "$updated_profiles_str"
 }
 
 install_root_ca() {
-  [ "$EUID" -ne 0 ] && {
-    echo -e "${RED}Error: install_root_ca must be run as root. Try running with sudo.${NC}"
+  local src="$directory/configuration/rootCA/rootCA.pem"
+  local dest="/usr/local/share/ca-certificates/rootCA.crt"
+
+  # must be root
+  if (( EUID != 0 )); then
+    printf "%bError:%b must be run as root.\n" "$RED" "$NC"
     return 1
-  }
+  fi
 
-  local cert_src="$directory/configuration/rootCA/rootCA.pem"
-  local cert_dest="/usr/local/share/ca-certificates/rootCA.crt"
-
-  [ ! -f "$cert_src" ] && {
-    echo -e "${RED}Error: Certificate file '$cert_src' not found.${NC}"
+  # source file must exist
+  if [[ ! -r $src ]]; then
+    printf "%bError:%b certificate not found: %s\n" "$RED" "$NC" "$src"
     return 1
-  }
+  fi
 
-  cp "$cert_src" "$cert_dest" && echo -e "${GREEN}Copied to '$cert_dest'.${NC}"
-  update-ca-certificates && echo -e "${GREEN}Successfully updated CA certificates.${NC}"
+  printf "%bInstalling root CA certificate...%b\n" "$CYAN" "$NC"
+
+  # copy with correct perms, then update trust store
+  if install -m 644 "$src" "$dest"; then
+    if command -v update-ca-certificates &>/dev/null; then
+      update-ca-certificates
+    elif command -v trust &>/dev/null; then
+      trust extract-compat
+    else
+      printf "%bWarning:%b no CA-update tool found; skipping trust update.\n" "$YELLOW" "$NC"
+    fi
+
+    printf "%bSuccess:%b root CA installed to %s\n" "$GREEN" "$NC" "$dest"
+    return 0
+  else
+    printf "%bError:%b failed to install root CA.\n" "$RED" "$NC"
+    return 1
+  fi
 }

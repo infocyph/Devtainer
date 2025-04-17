@@ -132,20 +132,22 @@ cmd_core() {
 # Setup tasks (permissions, domain, profiles, env)
 cmd_setup() {
   case "${positional[1]:-}" in
-    permissions)
+    permissions|perms|perm|permission)
       assign_permissions
       printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
       ;;
     domain)
+      docker exec SERVER_TOOLS mkhost --RESET
       docker exec -it SERVER_TOOLS mkhost
       local pprofile=$(docker exec SERVER_TOOLS mkhost --ACTIVE_PHP_PROFILE)
-      if [[ $? -eq 0 && -n "pprofile" ]]; then
+      if [[ $? -eq 0 && -n "$pprofile" ]]; then
         modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$pprofile"
       fi
       local sprofile=$(docker exec SERVER_TOOLS mkhost --APACHE_ACTIVE)
-      if [[ $? -eq 0 && -n "sprofile" ]]; then
+      if [[ $? -eq 0 && -n "$sprofile" ]]; then
         modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$sprofile"
       fi
+      docker exec SERVER_TOOLS mkhost --RESET
       ;;
     profiles)
       prompt_common_vars
