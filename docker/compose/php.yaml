@@ -17,8 +17,8 @@ x-php-service: &php-service
     - "../../configuration/ssh:/home/${USER}/.ssh:ro"
   extra_hosts:
     - "host.docker.internal:host-gateway"
-  depends_on:
-    - server-tools
+#  depends_on:
+#    - server-tools
   healthcheck:
     test: ["CMD-SHELL", "php-fpm -t || exit 1"]
     interval: 30s
@@ -32,7 +32,7 @@ services:
     hostname: php-73
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -55,10 +55,10 @@ services:
     hostname: php-74
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
-        GID: ${GID:-root}
+        GID: ${GID:-1000}
         USERNAME: ${USER}
         PHP_EXT: ${PHP_EXT:-}
         LINUX_PKG: ${LINUX_PKG:-}
@@ -78,7 +78,7 @@ services:
     hostname: php-80
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -101,7 +101,7 @@ services:
     hostname: php-81
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -124,7 +124,7 @@ services:
     hostname: php-82
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -147,7 +147,7 @@ services:
     hostname: php-83
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
@@ -170,7 +170,7 @@ services:
     hostname: php-84
     build:
       context: ../dockerfiles
-      dockerfile: php.Dockerfile
+      dockerfile: alpine.Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-root}
