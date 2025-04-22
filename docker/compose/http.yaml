@@ -42,5 +42,7 @@ services:
       - "${PROJECT_DIR:-./../../../application}:/app"
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nginx
     networks:
       - frontend

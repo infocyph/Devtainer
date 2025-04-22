@@ -9,7 +9,7 @@ networks:
     driver: bridge
 
 include:
-#  - docker/compose/companion.yaml
+  - docker/compose/companion.yaml
 #  - docker/compose/mysql.yaml
 #  - docker/compose/mariadb.yaml
 #  - docker/compose/psql.yaml
@@ -17,4 +17,4 @@ include:
 #  - docker/compose/elasticsearch.yaml
 #  - docker/compose/redis.yaml
   - docker/compose/php.yaml
-#  - docker/compose/http.yaml
+  - docker/compose/http.yaml
