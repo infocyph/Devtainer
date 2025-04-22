@@ -14,8 +14,6 @@ services:
       - "${PROJECT_DIR:-./../../../application}:/app"
       - ../../configuration/rootCA:/etc/share/rootCA
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
     networks:
       - backend
 
@@ -27,8 +25,6 @@ services:
     environment:
       - TZ=${TZ:-}
     volumes:
-      - /etc/localtime:/etc/localtime
-      - /etc/timezone:/etc/timezone
       - ../../configuration/scheduler/supervisor:/etc/supervisor/conf.d:ro
       - ../../configuration/scheduler/cron-jobs:/etc/cron.d:ro
       - ../../logs/runner:/var/log/supervisor

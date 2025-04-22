@@ -38,11 +38,9 @@ ARG GID=1000
 RUN set -eux; \
     UPDATED_UID=${UID:-1000}; \
     UPDATED_GID=${GID:-1000}; \
-    # Create group if doesn't exist
     if ! getent group "${UPDATED_GID}" >/dev/null; then \
         addgroup -g "${UPDATED_GID}" "${USERNAME}"; \
     fi; \
-    # Create user with specified UID/GID
     adduser -D -u "${UPDATED_UID}" -G "$(getent group "${UPDATED_GID}" | cut -d: -f1)" \
         -h "/home/${USERNAME}" -s /bin/sh "${USERNAME}"; \
     apk update && apk add --no-cache sudo; \

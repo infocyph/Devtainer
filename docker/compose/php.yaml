@@ -8,8 +8,6 @@ x-php-service: &php-service
     - frontend
     - backend
   volumes:
-    - /etc/localtime:/etc/localtime
-    - /etc/timezone:/etc/timezone
     - "${PROJECT_DIR:-./../../../application}:/app"
     - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf
     - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
