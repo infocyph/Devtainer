@@ -17,7 +17,9 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH"
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 RUN set -eux; \
     apk update && \
-    apk add --no-cache curl git bash shadow figlet ncurses musl-locales gawk ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
+    apk add --no-cache \
+      curl git bash shadow figlet ncurses musl-locales gawk \
+      ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ } && \
     chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ } && \
     composer self-update --clean-backups && \
@@ -28,11 +30,22 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setup.sh /usr/local/bin/cli-setup.sh
-ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
 ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
 ADD https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat /usr/local/bin/chromacat
+RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/gitx /usr/local/bin/show-banner /usr/local/bin/chromacat
 
-# Add a system user and setup sudo
+RUN mkdir -p /etc/profile.d && \
+    { \
+      echo '#!/bin/sh'; \
+      echo 'if [ -n "$PS1" ] && [ -z "${BANNER_SHOWN-}" ]; then'; \
+      echo '  export BANNER_SHOWN=1'; \
+      echo '  show-banner "PHP '"${PHP_VERSION}"'"'; \
+      echo 'fi'; \
+    } > /etc/profile.d/banner-hook.sh && \
+    chmod +x /etc/profile.d/banner-hook.sh
+
+# Add a system user, give sudo, fix permissions
 ARG UID=1000
 ARG GID=1000
 RUN set -eux; \
@@ -48,14 +61,20 @@ RUN set -eux; \
     chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}"; \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"; \
     chmod 0440 "/etc/sudoers.d/${USERNAME}"; \
-    rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
-
-RUN chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/chromacat && \
+    rm -rf /var/cache/apk/* /tmp/* /var/tmp/* && \
+    chown root:root /etc/profile.d/banner-hook.sh && \
+    chown ${USERNAME}:${USERNAME} /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/chromacat && \
     chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/show-banner /usr/local/bin/gitx /usr/local/bin/chromacat
 
 USER ${USERNAME}
-RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh | bash -s -- --unattended && \
+RUN curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh \
+      | bash -s -- --unattended && \
     sudo /usr/local/bin/cli-setup.sh ${USERNAME} && \
-    echo 'show-banner "LocalDock" "PHP ${PHP_VERSION}"' >> ~/.bashrc
+    { \
+      echo 'if [ -n "$PS1" ] && [ -z "${BANNER_SHOWN-}" ]; then'; \
+      echo '  export BANNER_SHOWN=1'; \
+      echo '  show-banner "PHP '"${PHP_VERSION}"'"'; \
+      echo 'fi'; \
+    } >> ~/.bashrc
 
 WORKDIR /app
