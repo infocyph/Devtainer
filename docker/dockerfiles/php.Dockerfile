@@ -33,8 +33,6 @@ ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/cli-setu
 ADD https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx /usr/local/bin/gitx
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh /usr/local/bin/show-banner
 ADD https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat /usr/local/bin/chromacat
-RUN chmod +x /usr/local/bin/cli-setup.sh /usr/local/bin/gitx /usr/local/bin/show-banner /usr/local/bin/chromacat
-
 RUN mkdir -p /etc/profile.d && \
     { \
       echo '#!/bin/sh'; \
@@ -43,7 +41,8 @@ RUN mkdir -p /etc/profile.d && \
       echo '  show-banner "PHP '"${PHP_VERSION}"'"'; \
       echo 'fi'; \
     } > /etc/profile.d/banner-hook.sh && \
-    chmod +x /etc/profile.d/banner-hook.sh
+    chmod +x /etc/profile.d/banner-hook.sh /usr/local/bin/cli-setup.sh /usr/local/bin/gitx \
+    /usr/local/bin/show-banner /usr/local/bin/chromacat
 
 # Add a system user, give sudo, fix permissions
 ARG UID=1000
