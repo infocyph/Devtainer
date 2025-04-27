@@ -14,7 +14,8 @@ NC='\033[0m' # No color
 declare -A descriptions=()
 declare -A options=()
 declare -a positional=()
-
+source "$directory/docker/utilities/core"
+source "$directory/docker/utilities/profiles"
 ### ========== ARGUMENT PARSER ==========
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -68,9 +69,6 @@ run_command() {
 
 ### ========== INIT ==========
 init() {
-  source "$directory/docker/utilities/core"
-  source "$directory/docker/utilities/profiles"
-
   check_required_commands "docker" "readlink"
   check_file_existence "/.env"
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
@@ -150,11 +148,7 @@ cmd_setup() {
       docker exec SERVER_TOOLS mkhost --RESET
       ;;
     profiles)
-      prompt_common_vars
-      for service in "${!services_and_profiles[@]}"; do
-        process_service "$service"
-      done
-      printf "${GREEN}Setup completed.${NC}\n"
+      process_all
       ;;
     env)
       local env_file="$directory/.env"

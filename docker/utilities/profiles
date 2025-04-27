@@ -1,150 +1,184 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 set -euo pipefail
 
-# ==========================================
-# 🗂️ SERVICE / PROFILE / ENV MAPPINGS
-# ==========================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Colors
+# ─────────────────────────────────────────────────────────────────────────────
+RED='\033[0;31m'    GREEN='\033[0;32m'
+CYAN='\033[0;36m'   YELLOW='\033[1;33m'
+NC='\033[0m'
 
-declare -A services_and_profiles
-declare -A profile_env_vars
-declare -A client_profiles
-
-services_and_profiles=(
-    ["ELASTICSEARCH"]="elasticsearch elasticsearch-cluster"
-    ["MYSQL/MARIADB"]="mariadb mysql mariadb-replication mysql-replication"
-    ["MONGO"]="mongodb mongodb-replica"
-    ["REDIS"]="redis redis-replication"
-    ["PSQL"]="postgresql postgresql-replication"
+# ─────────────────────────────────────────────────────────────────────────────
+# SERVICE → PROFILES map
+# ─────────────────────────────────────────────────────────────────────────────
+declare -A SERVICES=(
+  [ELASTICSEARCH]="elasticsearch elasticsearch-cluster"
+  [MYSQL/MARIADB]="mysql mysql-replication mariadb mariadb-replication"
+  [MONGO]="mongodb mongodb-replica"
+  [REDIS]="redis redis-replication"
+  [PSQL]="postgresql postgresql-replication"
 )
 
-profile_env_vars=(
-    ["elasticsearch"]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_PORT=9200"
-    ["elasticsearch-cluster"]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_NUMBER_OF_SHARDS=3 ELASTICSEARCH_NUMBER_OF_REPLICAS=1"
-    ["kibana"]="ELASTICSEARCH_VERSION=8.12.2 KIBANA_PORT=5601"
-    ["kibana-cluster"]="ELASTICSEARCH_VERSION=8.12.2 KIBANA_PORT=5601"
+# ─────────────────────────────────────────────────────────────────────────────
+# PROFILE → KEY=DEFAULT… (base entries only)
+# ─────────────────────────────────────────────────────────────────────────────
+declare -A PROFILE_ENV=(
+  [elasticsearch]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_PORT=9200"
+  [elasticsearch-cluster]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_NUMBER_OF_SHARDS=3 ELASTICSEARCH_NUMBER_OF_REPLICAS=1"
+  [kibana]="ELASTICSEARCH_VERSION=8.12.2 KIBANA_PORT=5601"
+  [kibana-cluster]="ELASTICSEARCH_VERSION=8.12.2 KIBANA_PORT=5601"
 
-    ["postgresql"]="POSTGRESQL_VERSION=latest POSTGRESQL_PORT=5432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres POSTGRES_DATABASE=postgres"
-    ["postgresql-replication"]="POSTGRESQL_VERSION=latest POSTGRESQL_PORT=5432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres POSTGRES_DATABASE=postgres"
-    ["postgres-client"]="PGADMIN_DEFAULT_EMAIL=admin@email.com PGADMIN_DEFAULT_PASSWORD=admin"
-    ["postgres-replication-client"]="PGADMIN_DEFAULT_EMAIL=admin@email.com PGADMIN_DEFAULT_PASSWORD=admin"
+  [postgresql]="POSTGRESQL_VERSION=latest POSTGRESQL_PORT=5432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres POSTGRES_DATABASE=postgres"
+  [postgres-client]="PGADMIN_DEFAULT_EMAIL=admin@email.com PGADMIN_DEFAULT_PASSWORD=admin"
 
-    ["mariadb"]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=devuser MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb"
-    ["mariadb-replication"]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=devuser MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb MARIADB_REPLICATION_USER=replicauser MARIADB_REPLICATION_PASSWORD=replpassword"
-    ["mariadb-client"]="MARIADB_CLIENT_USER=admin MARIADB_CLIENT_PASSWORD=admin"
-    ["mariadb-replication-client"]="MARIADB_CLIENT_USER=admin MARIADB_CLIENT_PASSWORD=admin"
+  [mysql]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=devuser MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
+  [mysql-client]="MYSQL_CLIENT_USER=admin MYSQL_CLIENT_PASSWORD=admin"
 
-    ["mysql"]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=devuser MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
-    ["mysql-replication"]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=devuser MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb MYSQL_REPLICATION_USER=replicauser MYSQL_REPLICATION_PASSWORD=replpassword"
-    ["mysql-client"]="MYSQL_CLIENT_USER=admin MYSQL_CLIENT_PASSWORD=admin"
-    ["mysql-replication-client"]="MYSQL_CLIENT_USER=admin MYSQL_CLIENT_PASSWORD=admin"
+  [mongodb]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
+  [mongo-client]="MONGO_EXPRESS_VERSION=latest MONGO_EXPRESS_PORT=8081 MONGO_EXPRESS_BA_USERNAME=root MONGO_EXPRESS_BA_PASSWORD=12345"
 
-    ["mongodb"]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
-    ["mongodb-replica"]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
-    ["mongo-client"]="MONGO_EXPRESS_VERSION=latest MONGO_EXPRESS_PORT=8081 MONGO_EXPRESS_BA_USERNAME=root MONGO_EXPRESS_BA_PASSWORD=12345"
-    ["mongo-replica-client"]="MONGO_EXPRESS_VERSION=latest MONGO_EXPRESS_PORT=8081 MONGO_EXPRESS_BA_USERNAME=root MONGO_EXPRESS_BA_PASSWORD=12345"
-
-    ["redis"]="REDIS_VERSION=latest REDIS_PORT=6379"
-    ["redis-replication"]="REDIS_VERSION=latest REDIS_PORT=6379"
-    ["redis-client"]="REDIS_INSIGHT_PORT=5540"
-    ["redis-replication-client"]="REDIS_INSIGHT_PORT=5540"
+  [redis]="REDIS_VERSION=latest REDIS_PORT=6379"
+  [redis-client]="REDIS_INSIGHT_PORT=5540"
 )
 
-client_profiles=(
-    ["elasticsearch"]="kibana"
-    ["elasticsearch-cluster"]="kibana-cluster"
-    ["mariadb"]="mariadb-client"
-    ["mariadb-replication"]="mariadb-replication-client"
-    ["mysql"]="mysql-client"
-    ["mysql-replication"]="mysql-replication-client"
-    ["mongodb"]="mongo-client"
-    ["mongodb-replica"]="mongo-replica-client"
-    ["postgresql"]="postgres-client"
-    ["postgresql-replication"]="postgres-replication-client"
-    ["redis"]="redis-client"
-    ["redis-replication"]="redis-replication-client"
+# derived entries (after PROFILE_ENV exists)
+PROFILE_ENV[postgresql-replication]="${PROFILE_ENV[postgresql]}"
+PROFILE_ENV[postgres-replication-client]="${PROFILE_ENV[postgres-client]}"
+
+PROFILE_ENV[mysql-replication]="${PROFILE_ENV[mysql]} MYSQL_REPLICATION_USER=replicauser MYSQL_REPLICATION_PASSWORD=replpassword"
+PROFILE_ENV[mysql-replication-client]="${PROFILE_ENV[mysql-client]}"
+
+PROFILE_ENV[mariadb]="${PROFILE_ENV[mysql]/MYSQL_/MARIADB_}"
+PROFILE_ENV[mariadb-replication]="${PROFILE_ENV[mariadb]} MARIADB_REPLICATION_USER=replicauser MARIADB_REPLICATION_PASSWORD=replpassword"
+PROFILE_ENV[mariadb-client]="MARIADB_CLIENT_USER=admin MARIADB_CLIENT_PASSWORD=admin"
+PROFILE_ENV[mariadb-replication-client]="${PROFILE_ENV[mariadb-client]}"
+
+PROFILE_ENV[mongodb-replica]="${PROFILE_ENV[mongodb]}"
+PROFILE_ENV[mongo-replica-client]="${PROFILE_ENV[mongo-client]}"
+
+PROFILE_ENV[redis-replication]="${PROFILE_ENV[redis]}"
+PROFILE_ENV[redis-replication-client]="${PROFILE_ENV[redis-client]}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROFILE → its corresponding client profile
+# ─────────────────────────────────────────────────────────────────────────────
+declare -A CLIENT_PROFILE=(
+  [elasticsearch]=kibana
+  [elasticsearch-cluster]=kibana-cluster
+  [mysql]=mysql-client
+  [mysql-replication]=mysql-replication-client
+  [mariadb]=mariadb-client
+  [mariadb-replication]=mariadb-replication-client
+  [mongodb]=mongo-client
+  [mongodb-replica]=mongo-replica-client
+  [postgresql]=postgres-client
+  [postgresql-replication]=postgres-replication-client
+  [redis]=redis-client
+  [redis-replication]=redis-replication-client
 )
 
-# ==========================================
-# ⚙️ ENVIRONMENT PROMPTS
-# ==========================================
-
-prompt_common_vars() {
-    read -rp "$(echo -e "${CYAN}Enter the timezone (TZ) [default: local time]: ${NC}")" TZ
-    TZ=${TZ:-}
-
-    read -rp "$(echo -e "${CYAN}Enter the user UID [default: $UID]: ${NC}")" USER_UID
-    USER_UID=${USER_UID:-$UID}
-
-    read -rp "$(echo -e "${CYAN}Enter the user GID [default: root]: ${NC}")" GID
-    GID=${GID:-root}
-
-    echo -e "${GREEN}Common Variables:${NC}"
-    echo -e "${CYAN}TZ = $TZ${NC}"
-    echo -e "${CYAN}USER_UID = $USER_UID${NC}"
-    echo -e "${CYAN}GID = $GID${NC}"
-
-    update_env "$directory/docker/.env" "TZ" "$TZ"
-    update_env "$directory/docker/.env" "UID" "$USER_UID"
-    update_env "$directory/docker/.env" "GID" "$GID"
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+# Prompt with a default value
+read_default() {
+  local prompt="$1" default="$2" input
+  read -rp "$(printf "${CYAN}%s [default: %s]: ${NC}" "$prompt" "$default")" input
+  printf "%s" "${input:-$default}"
 }
 
-# ==========================================
-# ⚙️ SERVICE PROFILE PROMPTS
-# ==========================================
+# Yes/no prompt: returns 0 (true) on “y”
+ask_yes() {
+  local prompt="$1" ans
+  read -rp "$(printf "${CYAN}%s (y/n): ${NC}" "$prompt")" ans
+  [[ "${ans,,}" == "y" ]]
+}
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Prompt & write common variables (TZ, UID, GID)
+# ─────────────────────────────────────────────────────────────────────────────
+prompt_common_vars() {
+  echo -e "${YELLOW}→ Common Configuration${NC}"
+  local tz=$(read_default "Timezone (TZ)" "Etc/UTC")
+  local uid=$(read_default "User UID" "$(id -u)")
+  local gid=$(read_default "User GID" "$(id -g)")
+  local env_file="$directory/docker/.env"
+  update_env "$env_file" TZ "$tz"
+  update_env "$env_file" UID "$uid"
+  update_env "$env_file" GID "$gid"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Handle one service: enable, pick profile, collect & apply envs, optional client
+# ─────────────────────────────────────────────────────────────────────────────
 process_service() {
-    local service_name="$1"
-    local profiles="${services_and_profiles[$service_name]}"
+  local service="$1"
+  local env_file="$directory/docker/.env"
 
-    echo -e "${YELLOW}Processing $service_name...${NC}"
-    read -rp "$(echo -e "${CYAN}Do you want to enable $service_name? (y/n): ${NC}")" enable_service
-    if [[ "${enable_service,,}" != "y" ]]; then
-        echo -e "${RED}Skipping $service_name...${NC}"
-        return
-    fi
+  echo -e "\n${YELLOW}→ $service${NC}"
+  ask_yes "Enable $service?" || { echo -e "${RED}Skipping $service${NC}"; return; }
 
-    echo -e "${CYAN}Which profile do you want to enable?${NC}"
-    local profile_choice=()
-    local profile_index=1
-    for profile in $profiles; do
-        echo -e "${CYAN}${profile_index}. $profile${NC}"
-        profile_choice[$profile_index]="$profile"
-        ((profile_index++))
+  # choose profile
+  IFS=' ' read -r -a opts <<<"${SERVICES[$service]}"
+  for i in "${!opts[@]}"; do
+    printf "  %d) %s\n" $((i+1)) "${opts[i]}"
+  done
+  read -rp "$(printf "${CYAN}Choose profile [1-%d]: ${NC}" "${#opts[@]}")" idx
+  local profile="${opts[$((idx-1))]}"
+  printf "${GREEN}Selected: %s${NC}\n" "$profile"
+  modify_compose_profiles "$env_file" "COMPOSE_PROFILES" "add" "$profile"
+
+  # collect service envs
+  declare -a to_set=()
+  for pair in ${PROFILE_ENV[$profile]}; do
+    IFS='=' read -r key def <<<"$pair"
+    val=$(read_default "Enter value for $key" "$def")
+    to_set+=("$key=$val")
+  done
+
+  # summary of what we’ll set
+  echo -e "${GREEN}Configuration for $profile:${NC}"
+  for kv in "${to_set[@]}"; do
+    echo -e "  ${CYAN}$kv${NC}"
+  done
+
+  # apply them
+  for kv in "${to_set[@]}"; do
+    IFS='=' read -r key val <<<"$kv"
+    update_env "$env_file" "$key" "$val"
+  done
+
+  # optional client profile
+  local client="${CLIENT_PROFILE[$profile]:-}"
+  if [[ -n "$client" ]] && ask_yes "Enable client for $profile ($client)?" ; then
+    declare -a client_set=()
+    for pair in ${PROFILE_ENV[$client]}; do
+      IFS='=' read -r key def <<<"$pair"
+      val=$(read_default "Enter value for $key" "$def")
+      client_set+=("$key=$val")
     done
 
-    read -rp "$(echo -e "${CYAN}Enter your profile choice number: ${NC}")" profile_number
-    local selected_profile=${profile_choice[$profile_number]}
-
-    echo -e "${GREEN}Selected profile: $selected_profile${NC}"
-    modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$selected_profile"
-
-    IFS=" " read -r -a env_vars <<<"${profile_env_vars[$selected_profile]}"
-    for env_var in "${env_vars[@]}"; do
-        local key=$(echo "$env_var" | cut -d= -f1)
-        local default_value=$(echo "$env_var" | cut -d= -f2)
-        read -rp "$(echo -e "${CYAN}Provide value for '$key' (default: $default_value): ${NC}")" input_value
-        input_value=${input_value:-$default_value}
-        echo -e "${GREEN}Setting $key = $input_value${NC}"
-        update_env "$directory/docker/.env" "$key" "$input_value"
+    echo -e "${GREEN}Configuration for $client:${NC}"
+    for kv in "${client_set[@]}"; do
+      echo -e "  ${CYAN}$kv${NC}"
     done
 
-    if [[ -n "${client_profiles[$selected_profile]}" ]]; then
-        local client_profile="${client_profiles[$selected_profile]}"
-        read -rp "$(echo -e "${CYAN}Enable client profile for $selected_profile ($client_profile)? (y/n): ${NC}")" enable_client
-        if [[ "${enable_client,,}" == "y" ]]; then
-            echo -e "${GREEN}Enabling client profile: $client_profile${NC}"
-            IFS=" " read -r -a client_env_vars <<<"${profile_env_vars[$client_profile]}"
-            for client_env_var in "${client_env_vars[@]}"; do
-                local key=$(echo "$client_env_var" | cut -d= -f1)
-                local default_value=$(echo "$client_env_var" | cut -d= -f2)
-                read -rp "$(echo -e "${CYAN}Provide value for '$key' (default: $default_value): ${NC}")" client_input_value
-                client_input_value=${client_input_value:-$default_value}
-                echo -e "${GREEN}Setting $key = $client_input_value${NC}"
-                update_env "$directory/docker/.env" "$key" "$client_input_value"
-            done
-        else
-            echo -e "${RED}Skipping client for $service_name.${NC}"
-        fi
-    fi
+    for kv in "${client_set[@]}"; do
+      IFS='=' read -r key val <<<"$kv"
+      update_env "$env_file" "$key" "$val"
+    done
+  else
+    echo -e "${RED}Skipping client for $profile${NC}"
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main flow: common vars + each service
+# ─────────────────────────────────────────────────────────────────────────────
+process_all() {
+  prompt_common_vars
+  for svc in "${!SERVICES[@]}"; do
+    process_service "$svc"
+  done
+  echo -e "\n${GREEN}✅ All services configured!${NC}"
 }
