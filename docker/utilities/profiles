@@ -59,9 +59,6 @@ PROFILE_ENV[mongo-replica-client]="${PROFILE_ENV[mongo-client]}"
 PROFILE_ENV[redis-replication]="${PROFILE_ENV[redis]}"
 PROFILE_ENV[redis-replication-client]="${PROFILE_ENV[redis-client]}"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PROFILE → its corresponding client profile
-# ─────────────────────────────────────────────────────────────────────────────
 declare -A CLIENT_PROFILE=(
   [elasticsearch]=kibana
   [elasticsearch-cluster]=kibana-cluster
@@ -78,16 +75,38 @@ declare -A CLIENT_PROFILE=(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Queues for “deferred” operations
+# ─────────────────────────────────────────────────────────────────────────────
+declare -a PENDING_ENVS=()      # KEY=VAL pairs to write at end
+declare -a PENDING_PROFILES=()  # profiles to 'add' at end
+
+queue_env()      { PENDING_ENVS+=( "$1" ); }
+queue_profile()  { PENDING_PROFILES+=( "$1" ); }
+
+flush_envs() {
+  local env_file="$directory/docker/.env"
+  for kv in "${PENDING_ENVS[@]}"; do
+    IFS='=' read -r key val <<<"$kv"
+    update_env "$env_file" "$key" "$val"
+  done
+}
+
+flush_profiles() {
+  local env_file="$directory/docker/.env"
+  for profile in "${PENDING_PROFILES[@]}"; do
+    modify_compose_profiles "$env_file" "COMPOSE_PROFILES" "add" "$profile"
+  done
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
-# Prompt with a default value
 read_default() {
   local prompt="$1" default="$2" input
   read -rp "$(printf "${CYAN}%s [default: %s]: ${NC}" "$prompt" "$default")" input
   printf "%s" "${input:-$default}"
 }
 
-# Yes/no prompt: returns 0 (true) on “y”
 ask_yes() {
   local prompt="$1" ans
   read -rp "$(printf "${CYAN}%s (y/n): ${NC}" "$prompt")" ans
@@ -95,30 +114,51 @@ ask_yes() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Prompt & write common variables (TZ, UID, GID)
+# Collect common vars (TZ, USER, UID, GID)
 # ─────────────────────────────────────────────────────────────────────────────
 prompt_common_vars() {
   echo -e "${YELLOW}→ Common Configuration${NC}"
-  local tz=$(read_default "Timezone (TZ)" "Etc/UTC")
-  local uid=$(read_default "User UID" "$(id -u)")
-  local gid=$(read_default "User GID" "$(id -g)")
-  local env_file="$directory/docker/.env"
-  update_env "$env_file" TZ "$tz"
-  update_env "$env_file" UID "$uid"
-  update_env "$env_file" GID "$gid"
+
+  local default_tz default_user default_uid default_gid
+  default_tz=$(
+    timedatectl show -p Timezone --value 2>/dev/null \
+      || < /etc/timezone 2>/dev/null \
+      || date +%Z
+  )
+  local tz=$(read_default "Timezone (TZ)" "$default_tz")
+
+  default_user=${USER:-$(id -un)}
+  local user=$(read_default "User" "$default_user")
+
+  if id "$user" &>/dev/null; then
+    default_uid=$(id -u "$user")
+    default_gid=$(id -g "$user")
+  else
+    default_uid=$(id -u)
+    default_gid=$(id -g)
+  fi
+  local uid=$(read_default "User UID" "$default_uid")
+  local gid=$(read_default "User GID" "$default_gid")
+
+  queue_env "TZ=$tz"
+  queue_env "USER=$user"
+  queue_env "UID=$uid"
+  queue_env "GID=$gid"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Handle one service: enable, pick profile, collect & apply envs, optional client
+# Handle one service: queue profile + collect envs + optional client
 # ─────────────────────────────────────────────────────────────────────────────
 process_service() {
   local service="$1"
-  local env_file="$directory/docker/.env"
-
   echo -e "\n${YELLOW}→ $service${NC}"
-  ask_yes "Enable $service?" || { echo -e "${RED}Skipping $service${NC}"; return; }
 
-  # choose profile
+  ask_yes "Enable $service?" || {
+    echo -e "${RED}Skipping $service${NC}"
+    return
+  }
+
+  # pick profile
   IFS=' ' read -r -a opts <<<"${SERVICES[$service]}"
   for i in "${!opts[@]}"; do
     printf "  %d) %s\n" $((i+1)) "${opts[i]}"
@@ -126,9 +166,11 @@ process_service() {
   read -rp "$(printf "${CYAN}Choose profile [1-%d]: ${NC}" "${#opts[@]}")" idx
   local profile="${opts[$((idx-1))]}"
   printf "${GREEN}Selected: %s${NC}\n" "$profile"
-  modify_compose_profiles "$env_file" "COMPOSE_PROFILES" "add" "$profile"
 
-  # collect service envs
+  # defer the compose-profile addition
+  queue_profile "$profile"
+
+  # collect envs
   declare -a to_set=()
   for pair in ${PROFILE_ENV[$profile]}; do
     IFS='=' read -r key def <<<"$pair"
@@ -136,19 +178,13 @@ process_service() {
     to_set+=("$key=$val")
   done
 
-  # summary of what we’ll set
   echo -e "${GREEN}Configuration for $profile:${NC}"
   for kv in "${to_set[@]}"; do
     echo -e "  ${CYAN}$kv${NC}"
+    queue_env "$kv"
   done
 
-  # apply them
-  for kv in "${to_set[@]}"; do
-    IFS='=' read -r key val <<<"$kv"
-    update_env "$env_file" "$key" "$val"
-  done
-
-  # optional client profile
+  # optional client
   local client="${CLIENT_PROFILE[$profile]:-}"
   if [[ -n "$client" ]] && ask_yes "Enable client for $profile ($client)?" ; then
     declare -a client_set=()
@@ -161,11 +197,7 @@ process_service() {
     echo -e "${GREEN}Configuration for $client:${NC}"
     for kv in "${client_set[@]}"; do
       echo -e "  ${CYAN}$kv${NC}"
-    done
-
-    for kv in "${client_set[@]}"; do
-      IFS='=' read -r key val <<<"$kv"
-      update_env "$env_file" "$key" "$val"
+      queue_env "$kv"
     done
   else
     echo -e "${RED}Skipping client for $profile${NC}"
@@ -173,12 +205,17 @@ process_service() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main flow: common vars + each service
+# Main flow: collect → then flush both envs & profiles
 # ─────────────────────────────────────────────────────────────────────────────
 process_all() {
   prompt_common_vars
   for svc in "${!SERVICES[@]}"; do
     process_service "$svc"
   done
+
+  # now write everything in two passes
+  flush_envs
+  flush_profiles
+
   echo -e "\n${GREEN}✅ All services configured!${NC}"
 }

@@ -147,7 +147,7 @@ cmd_setup() {
       fi
       docker exec SERVER_TOOLS mkhost --RESET
       ;;
-    profiles)
+    profiles|profile)
       process_all
       ;;
     env)
