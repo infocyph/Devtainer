@@ -4,10 +4,10 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 # Colors
 # ─────────────────────────────────────────────────────────────────────────────
-RED='\033[0;31m'    GREEN='\033[0;32m'
-CYAN='\033[0;36m'   YELLOW='\033[1;33m'
-NC='\033[0m'
-
+RED='\033[0;31m'  GREEN='\033[0;32m'
+CYAN='\033[0;36m' YELLOW='\033[1;33m'
+NC='\033[0m'  BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'  WHITE='\033[0;37m'
 # ─────────────────────────────────────────────────────────────────────────────
 # SERVICE → PROFILES map
 # ─────────────────────────────────────────────────────────────────────────────
@@ -17,6 +17,22 @@ declare -A SERVICES=(
   [MONGO]="mongodb mongodb-replica"
   [REDIS]="redis redis-replication"
   [PSQL]="postgresql postgresql-replication"
+)
+
+# profile → pretty label
+declare -A PROFILE_LABELS=(
+  [postgresql]="PostgreSQL"
+  [postgresql-replication]="PostgreSQL (with Replication)"
+  [mysql]="MySQL"
+  [mysql-replication]="MySQL (with Replication)"
+  [mariadb]="MariaDB"
+  [mariadb-replication]="MariaDB (with Replication)"
+  [mongodb]="MongoDB"
+  [mongodb-replica]="MongoDB (with Replication)"
+  [redis]="Redis"
+  [redis-replication]="Redis (with Replication)"
+  [elasticsearch]="Elasticsearch"
+  [elasticsearch-cluster]="Elasticsearch (Cluster)"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,7 +125,7 @@ read_default() {
 
 ask_yes() {
   local prompt="$1" ans
-  read -rp "$(printf "${CYAN}%s (y/n): ${NC}" "$prompt")" ans
+  read -rp "$(printf "${BLUE}%s (y/n): ${NC}" "$prompt")" ans
   [[ "${ans,,}" == "y" ]]
 }
 
@@ -161,46 +177,59 @@ process_service() {
   # pick profile
   IFS=' ' read -r -a opts <<<"${SERVICES[$service]}"
   for i in "${!opts[@]}"; do
-    printf "  %d) %s\n" $((i+1)) "${opts[i]}"
+    key="${opts[i]}"
+    label="${PROFILE_LABELS[$key]:-$key}"
+    printf "  %d) %s\n" $((i+1)) "$label"
   done
-  read -rp "$(printf "${CYAN}Choose profile [1-%d]: ${NC}" "${#opts[@]}")" idx
+
+  read -rp "$(printf "${BLUE}Choose profile [1-%d]: ${NC}" "${#opts[@]}")" idx
   local profile="${opts[$((idx-1))]}"
-  printf "${GREEN}Selected: %s${NC}\n" "$profile"
+  local profile_label="${PROFILE_LABELS[$profile]:-$profile}"
 
   # defer the compose-profile addition
   queue_profile "$profile"
 
-  # collect envs
+  # collect profile envs
   declare -a to_set=()
+  echo -e "${BLUE}Enter value(s) for $profile_label:${NC}"
   for pair in ${PROFILE_ENV[$profile]}; do
     IFS='=' read -r key def <<<"$pair"
-    val=$(read_default "Enter value for $key" "$def")
+    val=$(read_default "$key" "$def")
     to_set+=("$key=$val")
   done
 
-  echo -e "${GREEN}Configuration for $profile:${NC}"
+  # optional client: collect its envs into client_set (if enabled)
+  local client="${CLIENT_PROFILE[$profile]:-}"
+  declare -a client_set=()
+  if [[ -n "$client" ]]; then
+    # look up human‐friendly labels
+    local profile_label="${PROFILE_LABELS[$profile]:-$profile}"
+    local client_label="${PROFILE_LABELS[$client]:-$client}"
+
+    if ask_yes "Enable client for $profile_label ($client_label)?" ; then
+      echo -e "${BLUE}Enter value(s) for $client_label:${NC}"
+      declare -a client_set=()
+      for pair in ${PROFILE_ENV[$client]}; do
+        IFS='=' read -r key def <<<"$pair"
+        val=$(read_default "$key" "$def")
+        client_set+=("$key=$val")
+      done
+    else
+      echo -e "${RED}Skipping client for $profile_label${NC}"
+    fi
+  fi
+  printf "\n${GREEN}Selected: ${CYAN}%s${NC}\n" "$profile_label"
+  echo -e "${GREEN}Configuration for $profile_label:${NC}"
   for kv in "${to_set[@]}"; do
     echo -e "  ${CYAN}$kv${NC}"
     queue_env "$kv"
   done
-
-  # optional client
-  local client="${CLIENT_PROFILE[$profile]:-}"
-  if [[ -n "$client" ]] && ask_yes "Enable client for $profile ($client)?" ; then
-    declare -a client_set=()
-    for pair in ${PROFILE_ENV[$client]}; do
-      IFS='=' read -r key def <<<"$pair"
-      val=$(read_default "Enter value for $key" "$def")
-      client_set+=("$key=$val")
-    done
-
-    echo -e "${GREEN}Configuration for $client:${NC}"
+  if [[ ${#client_set[@]} -gt 0 ]]; then
+    echo -e "${GREEN}Configuration for $client_label:${NC}"
     for kv in "${client_set[@]}"; do
       echo -e "  ${CYAN}$kv${NC}"
       queue_env "$kv"
     done
-  else
-    echo -e "${RED}Skipping client for $profile${NC}"
   fi
 }
 
