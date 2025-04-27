@@ -16,7 +16,7 @@ declare -A SERVICES=(
   [MYSQL/MARIADB]="mysql mysql-replication mariadb mariadb-replication"
   [MONGO]="mongodb mongodb-replica"
   [REDIS]="redis redis-replication"
-  [PSQL]="postgresql postgresql-replication"
+  [POSTGRESQL]="postgresql postgresql-replication"
 )
 
 # profile → pretty label
@@ -33,6 +33,18 @@ declare -A PROFILE_LABELS=(
   [redis-replication]="Redis (with Replication)"
   [elasticsearch]="Elasticsearch"
   [elasticsearch-cluster]="Elasticsearch (Cluster)"
+  [kibana]="Kibana"
+  [kibana-cluster]="Kibana (Cluster)"
+  [mysql-client]="MySQL Client"
+  [mysql-replication-client]="MySQL Client"
+  [mariadb-client]="MariaDB Client"
+  [mariadb-replication-client]="MariaDB Client"
+  [mongodb-client]="MongoDB Client"
+  [mongodb-replica-client]="MongoDB Client"
+  [redis-client]="Redis Client"
+  [redis-replication-client]="Redis Client"
+  [postgres-client]="PostgreSQL Client"
+  [postgres-replication-client]="PostgreSQL Client"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
