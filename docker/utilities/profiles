@@ -14,7 +14,7 @@ MAGENTA='\033[0;35m'  WHITE='\033[0;37m'
 declare -A SERVICES=(
   [ELASTICSEARCH]="elasticsearch elasticsearch-cluster"
   [MYSQL/MARIADB]="mysql mysql-replication mariadb mariadb-replication"
-  [MONGO]="mongodb mongodb-replica"
+  [MONGODB]="mongodb mongodb-replica"
   [REDIS]="redis redis-replication"
   [POSTGRESQL]="postgresql postgresql-replication"
 )
@@ -34,7 +34,7 @@ declare -A PROFILE_LABELS=(
   [elasticsearch]="Elasticsearch"
   [elasticsearch-cluster]="Elasticsearch (Cluster)"
   [kibana]="Kibana"
-  [kibana-cluster]="Kibana (Cluster)"
+  [kibana-cluster]="Kibana"
   [mysql-client]="MySQL Client"
   [mysql-replication-client]="MySQL Client"
   [mariadb-client]="MariaDB Client"
