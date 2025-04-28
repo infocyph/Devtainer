@@ -3,4 +3,5 @@
 !apache
 !nginx
 !olds
+!pgadmin
 !.gitignore

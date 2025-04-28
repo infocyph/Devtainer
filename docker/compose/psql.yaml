@@ -1,131 +1,98 @@
-x-base-service: &default-service
-  environment:
-    - TZ=${TZ:-}
-  volumes:
-    - /etc/localtime:/etc/localtime:ro
-    - /etc/timezone:/etc/timezone:ro
+x-default-service: &default-service
+  restart: unless-stopped
+  networks:
+    - backend
+  healthcheck:
+    test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+    interval: 30s
+    timeout: 10s
+    retries: 5
 
 services:
-  # PostgreSQL Single Instance
   postgres-server:
     <<: *default-service
     container_name: POSTGRESQL
     hostname: postgres
-    image: postgres:${POSTGRESQL_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-latest}
     profiles:
       - postgresql
-    restart: unless-stopped
     ports:
-      - "${POSTGRESQL_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
+      - TZ=${TZ:-}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
     volumes:
-      - ./data/postgresql:/var/lib/postgresql/data
-    networks:
-      - backend
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - ../../data/postgresql:/var/lib/postgresql/data
 
   # PostgreSQL Primary (Master) Server
   postgres-master:
     <<: *default-service
     container_name: POSTGRES_MASTER
     hostname: postgres-master
-    image: postgres:${POSTGRESQL_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-latest}
     profiles:
       - postgresql-replication
-    restart: unless-stopped
     ports:
-      - "${POSTGRESQL_PORT:-5432}:5432"
+      - "${POSTGRES_MASTER_PORT:-5433}:5432"
     environment:
+      - TZ=${TZ:-}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
     volumes:
-      - ./data/postgresql-master:/var/lib/postgresql/data
-      - ./configuration/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf  # Custom config for replication
-    networks:
-      - backend
+      - ../../data/postgresql-master:/var/lib/postgresql/data
+      - ../../configuration/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ../../configuration/postgresql/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
   # PostgreSQL Replica (Slave) Server
   postgres-replica:
     <<: *default-service
     container_name: POSTGRES_REPLICA
     hostname: postgres-replica
-    image: postgres:${POSTGRESQL_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-latest}
     profiles:
       - postgresql-replication
-    restart: unless-stopped
+    depends_on:
+      - postgres-master
     environment:
+      - TZ=${TZ:-}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
       - REPLICATE_FROM=postgres-master
     volumes:
-      - ./data/postgresql-replica:/var/lib/postgresql/data
-    networks:
-      - backend
-    depends_on:
-      - postgres-master
-    command: [ "sh", "-c", "
-      pg_basebackup -h postgres-master -D /var/lib/postgresql/data -U ${POSTGRES_USER:-postgres} -v -P -R --wal-method=stream &&
-      postgres
-    " ]
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - ../../data/postgresql-replica:/var/lib/postgresql/data
+      - ../../configuration/postgresql/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command: [
+      "sh", "-c",
+      "if [ -z \"$(ls -A /var/lib/postgresql/data)\" ]; then \
+         pg_basebackup -h postgres-master -D /var/lib/postgresql/data \
+                       -U ${POSTGRES_USER:-postgres} -v -P -R --wal-method=stream; \
+       fi; \
+       exec docker-entrypoint.sh postgres"
+    ]
 
-  # pgAdmin Client
+  # Unified pgAdmin Client (connect to any server you add via the UI)
   postgres-client:
     <<: *default-service
     container_name: PG_ADMIN
     hostname: postgres-client
     image: dpage/pgadmin4:latest
-    restart: unless-stopped
-    ports:
-      - "${PGADMIN_PORT:-5400}:80"
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
-      - PGADMIN_HOST=postgres-server
-    volumes:
-      - ./data/pgadmin:/var/lib/pgadmin
-    networks:
-      - frontend
-      - backend
     profiles:
       - postgresql-client
-
-  # pgAdmin Client
-  postgres-replication-client:
-    <<: *default-service
-    container_name: PG_REPLICATION_ADMIN
-    hostname: postgres-replication-client
-    image: dpage/pgadmin4:latest
-    restart: unless-stopped
     ports:
       - "${PGADMIN_PORT:-5400}:80"
     environment:
+      - TZ=${TZ:-}
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
-      - PGADMIN_HOST=postgres-master
     volumes:
-      - ./data/pgadmin-replication:/var/lib/pgadmin
+      - ../../data/pgadmin:/var/lib/pgadmin
+      - ../../logs/pgadmin:/var/log/pgadmin
     networks:
       - frontend
       - backend
-    profiles:
-      - postgresql-replication-client

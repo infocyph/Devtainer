@@ -118,7 +118,8 @@ launch_php_container() {
 assign_permissions() {
   if [[ "$(uname -s)" == *NT* || "$(uname -o)" =~ (Msys|Cygwin) ]]; then return; fi
   if [[ "$EUID" -ne 0 ]]; then
-    echo -e "${RED}Please run with sudo.${NC}"; return
+    echo -e "${RED}Please run with sudo.${NC}"
+    return
   fi
 
   chmod 755 "$directory"
@@ -130,10 +131,9 @@ assign_permissions() {
   find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
   find "$directory/docker/dockerfiles/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
 
-  chmod 775 "$directory/data/"
-  find "$directory/data/" -type f ! -perm 660 -exec chmod 660 {} \;
-  chmod g+s "$directory/data/"
-  chown -R "$USER:docker" "$directory/data/"
+  chmod 2777 "$directory/data"
+  find "$directory/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} \;
+  find "$directory/data" -type f -exec chmod 0666 {} \;
 
   chmod -R 777 "$directory/logs/"
   chown -R "$USER:docker" "$directory/logs/"
@@ -154,40 +154,43 @@ modify_compose_profiles() {
   # pull out existing, newline‑separated
   local existing_profiles=""
   if grep -q "^${var_name}=" "$env_file"; then
-    existing_profiles=$(grep "^${var_name}=" "$env_file" \
-                      | cut -d '=' -f 2 \
-                      | tr ',' '\n')
+    existing_profiles=$(grep "^${var_name}=" "$env_file" |
+      cut -d '=' -f 2 |
+      tr ',' '\n')
   fi
 
   local updated_profiles=()
 
   case "$action" in
-    add)
-      # add any new ones
-      for p in "${profiles[@]}"; do
-        if ! grep -qx "$p" <<<"$existing_profiles"; then
-          updated_profiles+=("$p")
-        fi
-      done
-      # then re‑append the old ones
-      while IFS= read -r old; do
-        updated_profiles+=("$old")
-      done <<<"$existing_profiles"
-      ;;
-    remove)
-      for old in $existing_profiles; do
-        [[ ! " ${profiles[*]} " =~ " ${old} " ]] && updated_profiles+=("$old")
-      done
-      ;;
-    *)
-      echo -e "${RED}Invalid action: $action${NC}"
-      return 1
-      ;;
+  add)
+    # add any new ones
+    for p in "${profiles[@]}"; do
+      if ! grep -qx "$p" <<<"$existing_profiles"; then
+        updated_profiles+=("$p")
+      fi
+    done
+    # then re‑append the old ones
+    while IFS= read -r old; do
+      updated_profiles+=("$old")
+    done <<<"$existing_profiles"
+    ;;
+  remove)
+    for old in $existing_profiles; do
+      [[ ! " ${profiles[*]} " =~ " ${old} " ]] && updated_profiles+=("$old")
+    done
+    ;;
+  *)
+    echo -e "${RED}Invalid action: $action${NC}"
+    return 1
+    ;;
   esac
 
   # join with commas
   local updated_profiles_str
-  updated_profiles_str=$(IFS=,; echo "${updated_profiles[*]}")
+  updated_profiles_str=$(
+    IFS=,
+    echo "${updated_profiles[*]}"
+  )
   update_env "$env_file" "$var_name" "$updated_profiles_str"
 }
 
@@ -196,7 +199,7 @@ install_root_ca() {
   local dest="/usr/local/share/ca-certificates/rootCA.crt"
 
   # must be root
-  if (( EUID != 0 )); then
+  if ((EUID != 0)); then
     printf "%bError:%b must be run as root.\n" "$RED" "$NC"
     return 1
   fi
