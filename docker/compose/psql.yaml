@@ -1,7 +1,7 @@
 x-default-service: &default-service
   restart: unless-stopped
   networks:
-    - backend
+    - datastore
   healthcheck:
     test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
     interval: 30s
@@ -13,7 +13,7 @@ services:
     <<: *default-service
     container_name: POSTGRESQL
     hostname: postgres
-    image: postgres:${POSTGRES_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-alpine}
     profiles:
       - postgresql
     ports:
@@ -31,7 +31,7 @@ services:
     <<: *default-service
     container_name: POSTGRES_MASTER
     hostname: postgres-master
-    image: postgres:${POSTGRES_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-alpine}
     profiles:
       - postgresql-replication
     ports:
@@ -43,8 +43,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
     volumes:
       - ../../data/postgresql-master:/var/lib/postgresql/data
-      - ../../configuration/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf
-      - ../../configuration/postgresql/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      - ../conf/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ../conf/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
 
   # PostgreSQL Replica (Slave) Server
@@ -52,7 +52,7 @@ services:
     <<: *default-service
     container_name: POSTGRES_REPLICA
     hostname: postgres-replica
-    image: postgres:${POSTGRES_VERSION:-latest}
+    image: postgres:${POSTGRES_VERSION:-alpine}
     profiles:
       - postgresql-replication
     depends_on:
@@ -66,7 +66,7 @@ services:
       - REPLICATE_FROM=postgres-master
     volumes:
       - ../../data/postgresql-replica:/var/lib/postgresql/data
-      - ../../configuration/postgresql/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      - ../conf/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     command: [
       "sh", "-c",
       "if [ -z \"$(ls -A /var/lib/postgresql/data)\" ]; then \
@@ -95,4 +95,4 @@ services:
       - ../../logs/pgadmin:/var/log/pgadmin
     networks:
       - frontend
-      - backend
+      - datastore

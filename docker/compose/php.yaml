@@ -7,6 +7,7 @@ x-php-service: &php-service
   networks:
     - frontend
     - backend
+    - datastore
   volumes:
     - "${PROJECT_DIR:-./../../../application}:/app"
     - ../conf/www.conf:/usr/local/etc/php-fpm.d/www.conf

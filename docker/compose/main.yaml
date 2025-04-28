@@ -4,9 +4,24 @@ networks:
   frontend:
     name: Frontend
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24
   backend:
     name: Backend
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.29.0.0/24
+  datastore:
+    name: DataStore
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.0.0/24
 
 include:
   - docker/compose/companion.yaml
