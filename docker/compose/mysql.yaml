@@ -1,6 +1,13 @@
 x-base-service: &default-service
   environment:
     - TZ=${TZ:-}
+  networks:
+    - datastore
+  healthcheck:
+    test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
 
 services:
   mysql-single:
@@ -19,15 +26,8 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-12345}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-localdb}
     volumes:
-      - ./data/mysql-single:/var/lib/mysql
-      - ./logs/mysql-single:/var/log/mysql
-    networks:
-      - datastore
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - ../../data/mysql-single:/var/lib/mysql
+      - ../../logs/mysql-single:/var/log/mysql
 
   # MySQL Master (Primary) for replication
   mysql-master:
@@ -48,15 +48,8 @@ services:
       - MYSQL_REPLICATION_USER=${MYSQL_REPLICATION_USER:-replicauser}
       - MYSQL_REPLICATION_PASSWORD=${MYSQL_REPLICATION_PASSWORD:-replpassword}
     volumes:
-      - ./data/mysql-master:/var/lib/mysql
-      - ./logs/mysql-master:/var/log/mysql
-    networks:
-      - datastore
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - ../../data/mysql-master:/var/lib/mysql
+      - ../../logs/mysql-master:/var/log/mysql
     command:
       - --log-bin=mysql-bin
       - --server-id=1
@@ -80,16 +73,9 @@ services:
       - MYSQL_REPLICATION_USER=${MYSQL_REPLICATION_USER:-replicauser}
       - MYSQL_REPLICATION_PASSWORD=${MYSQL_REPLICATION_PASSWORD:-replpassword}
     volumes:
-      - ./data/mysql-slave:/var/lib/mysql
-      - ./logs/mysql-slave:/var/log/mysql
+      - ../../data/mysql-slave:/var/lib/mysql
+      - ../../logs/mysql-slave:/var/log/mysql
       - ../conf/mysql-replicate.sh:/docker-entrypoint-initdb.d/replicate.sh:ro
-    networks:
-      - datastore
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     command:
       - --server-id=2
 
@@ -108,7 +94,7 @@ services:
       - CB_ADMIN_LOGIN=${MYSQL_CLIENT_USER:-admin}
       - CB_ADMIN_PASSWORD=${MYSQL_CLIENT_PASSWORD:-admin}
     volumes:
-      - ./data/dbeaver-mysql:/opt/cloudbeaver/workspace
+      - ../../data/dbeaver-mysql:/opt/cloudbeaver/workspace
     networks:
       - frontend
       - datastore
