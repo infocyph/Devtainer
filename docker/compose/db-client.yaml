@@ -1,0 +1,93 @@
+x-db-client-service: &db-client-service
+  restart: unless-stopped
+  networks:
+    - datastore
+    - frontend
+
+services:
+  redis-insight:
+    <<: *db-client-service
+    container_name: REDIS_INSIGHT
+    hostname: redis-insight
+    image: redis/redisinsight:latest
+    profiles:
+      - redis
+    depends_on:
+      - redis
+    ports:
+      - "${REDIS_INSIGHT_PORT:-5540}:5540"
+    environment:
+      - RI_REDIS_HOST=redis
+    volumes:
+      - ../../data/redis-insight:/data
+
+  pgadmin4:
+    <<: *db-client-service
+    container_name: PGADMIN
+    hostname: pgadmin4
+    image: dpage/pgadmin4:latest
+    profiles:
+      - postgresql
+    depends_on:
+      - postgres
+    ports:
+      - "${PGADMIN_PORT:-5400}:80"
+    environment:
+      - TZ=${TZ:-}
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - ../../data/pgadmin:/var/lib/pgadmin
+      - ../../logs/pgadmin:/var/log/pgadmin
+
+  cloudbeaver:
+    <<: *db-client-service
+    container_name: CLOUD_BEAVER
+    hostname: cloud-beaver
+    image: dbeaver/cloudbeaver:latest
+    profiles:
+      - mysql
+      - mariadb
+    ports:
+      - "${DBEAVER_PORT:-8080}:8978"
+    environment:
+      - TZ=${TZ:-}
+      - CB_ADMIN_LOGIN=${MYSQL_USER:-devuser}
+      - CB_ADMIN_PASSWORD=${MYSQL_PASSWORD:-12345}
+    volumes:
+      - ../../data/cloudbeaver:/opt/cloudbeaver/workspace
+
+  mongo-express:
+    <<: *db-client-service
+    container_name: MONGO_EXPRESS
+    hostname: mongo-express
+    image: mongo-express:${MONGO_EXPRESS_VERSION:-latest}
+    profiles:
+      - mongodb
+    depends_on:
+      - mongodb
+    ports:
+      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+    environment:
+      - TZ=${TZ:-}
+      - ME_CONFIG_BASICAUTH=false
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGODB_ROOT_USERNAME:-root}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGODB_ROOT_PASSWORD:-12345}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@mongodb:${MONGODB_PORT:-27017}/admin
+
+  kibana:
+    <<: *db-client-service
+    container_name: KIBANA
+    hostname: kibana
+    image: kibana:${ELASTICSEARCH_VERSION:-8.18.0}
+    profiles:
+      - elasticsearch
+    depends_on:
+      - elasticsearch
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    environment:
+      - TZ=${TZ:-}
+      - "ELASTICSEARCH_HOSTS=http://elasticsearch:9200"
+    volumes:
+      - ../../data/kibana:/usr/share/kibana/data

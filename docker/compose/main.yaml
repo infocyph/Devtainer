@@ -25,11 +25,7 @@ networks:
 
 include:
   - docker/compose/companion.yaml
-#  - docker/compose/mysql.yaml
-#  - docker/compose/mariadb.yaml
-  - docker/compose/psql.yaml
-#  - docker/compose/mongo.yaml
-#  - docker/compose/elasticsearch.yaml
-#  - docker/compose/redis.yaml
+  - docker/compose/db.yaml
+  - docker/compose/db-client.yaml
   - docker/compose/php.yaml
   - docker/compose/http.yaml
