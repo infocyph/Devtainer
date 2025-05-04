@@ -205,7 +205,7 @@ main() {
   init
   raw=("$@")
   case "${raw[0],,}" in
-    php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|redis)
+    php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|redis|composer)
       "$directory/bin/${raw[0]}" "${raw[@]:1}"
       return
       ;;

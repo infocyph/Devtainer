@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# parse args: look for a -V <version> anywhere, collect the rest
+TARGET=""
+EXPLICIT=false
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -V)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: -V requires a version (e.g. -V 8.3)" >&2
+        exit 1
+      fi
+      TARGET="PHP_${2}"
+      EXPLICIT=true
+      shift 2
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# if -V was given, it must exist
+if [[ $EXPLICIT == true ]]; then
+  if ! docker ps --format '{{.Names}}' | grep -qx "$TARGET"; then
+    echo "Error: container '$TARGET' is not running." >&2
+    exit 1
+  fi
+else
+  # otherwise auto-detect highest version
+  for v in 8.4 8.3 8.2 8.1 8.0 7.4 7.3; do
+    cname="PHP_$v"
+    if docker ps --format '{{.Names}}' | grep -qx "$cname"; then
+      TARGET="$cname"
+      break
+    fi
+  done
+  if [[ -z "$TARGET" ]]; then
+    echo "Error: no PHP container is running." >&2
+    exit 1
+  fi
+fi
+
+# determine image, build run flags, and invoke PHP
+IMAGE=$(docker inspect -f '{{.Config.Image}}' "$TARGET")
+RUN_FLAGS=(--rm -v "$PWD":/workspace -w /workspace)
+[[ -t 0 ]] && RUN_FLAGS+=(-it) || RUN_FLAGS+=(-i)
+
+exec docker run "${RUN_FLAGS[@]}" "$IMAGE" composer "${ARGS[@]}"

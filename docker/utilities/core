@@ -32,13 +32,14 @@ update_env() {
 reload_http_containers() {
   echo -e "${GREEN}- Reloading HTTP...${NC}"
   if docker ps -q -f name=NGINX &>/dev/null; then
-    docker exec -it NGINX nginx -s reload
+    docker exec NGINX nginx -s reload &>/dev/null || true
   fi
   if docker ps -q -f name=APACHE &>/dev/null; then
-    docker exec -it APACHE apachectl graceful &>/dev/null
+    docker exec APACHE apachectl graceful &>/dev/null || true
   fi
   echo -e "${GREEN}- HTTP Reloaded...${NC}"
 }
+
 
 docker_compose() {
   docker compose --project-directory "$directory" \
