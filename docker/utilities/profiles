@@ -25,9 +25,9 @@ declare -A SERVICES=(
 # PROFILE → KEY=DEFAULT entries
 # ─────────────────────────────────────────────────────────────────────────────
 declare -A PROFILE_ENV=(
-  [elasticsearch]="ELASTICSEARCH_VERSION=8.12.2 ELASTICSEARCH_PORT=9200"
-  [mysql]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=devuser MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
-  [mariadb]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=devuser MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb"
+  [elasticsearch]="ELASTICSEARCH_VERSION=8.18.0 ELASTICSEARCH_PORT=9200"
+  [mysql]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=infocyph MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
+  [mariadb]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=infocyph MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb"
   [mongodb]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
   [redis]="REDIS_VERSION=latest REDIS_PORT=6379"
   [postgresql]="POSTGRES_VERSION=latest POSTGRES_PORT=5432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres POSTGRES_DATABASE=postgres"
@@ -77,7 +77,6 @@ ask_yes() {
 # ─────────────────────────────────────────────────────────────────────────────
 prompt_general_settings() {
   echo -e "${YELLOW}→ General Settings${NC}"
-
   # Timezone
   local default_tz tz
   if command -v timedatectl &>/dev/null; then
@@ -93,7 +92,6 @@ prompt_general_settings() {
   fi
   tz=$(read_default "Timezone (TZ)" "$default_tz")
   queue_env "TZ=$tz"
-
   # User / UID / GID
   local default_user user default_uid default_gid uid gid
   default_user=${USER:-$(id -un)}

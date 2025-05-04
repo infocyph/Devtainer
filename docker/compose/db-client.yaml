@@ -34,8 +34,8 @@ services:
       - "${PGADMIN_PORT:-5400}:80"
     environment:
       - TZ=${TZ:-}
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@email.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
+      - PGADMIN_DEFAULT_EMAIL=infocyph@localdock.admin
+      - PGADMIN_DEFAULT_PASSWORD=infocyph
     volumes:
       - ../../data/pgadmin:/var/lib/pgadmin
       - ../../logs/pgadmin:/var/log/pgadmin
@@ -52,8 +52,6 @@ services:
       - "${DBEAVER_PORT:-8080}:8978"
     environment:
       - TZ=${TZ:-}
-      - CB_ADMIN_LOGIN=${MYSQL_USER:-devuser}
-      - CB_ADMIN_PASSWORD=${MYSQL_PASSWORD:-12345}
     volumes:
       - ../../data/cloudbeaver:/opt/cloudbeaver/workspace
 
