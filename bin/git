@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+git() {
+  local SERVICE="SERVER_TOOLS"
+  local IMAGE
+
+  # find the image for your SERVER_TOOLS container
+  if ! IMAGE=$(docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null); then
+    echo "Error: container '$SERVICE' not found." >&2
+    return 1
+  fi
+
+  # interactive vs piped
+  local FLAGS="-i"
+  [[ -t 0 ]] && FLAGS="-it"
+
+  # run throw-away container, mount only SSH (and optional .gitconfig)
+  exec docker run $FLAGS --rm \
+    -u "$(id -u):$(id -g)" \
+    -e HOME="/home/$(id -un)" \
+    -v /etc/passwd:/etc/passwd:ro \
+    -v /etc/group:/etc/group:ro \
+    -v "${HOME}/.ssh:/home/$(id -un)/.ssh:ro" \
+    -v "${HOME}/.gitconfig:/home/$(id -un)/.gitconfig:ro" \
+    -v "$(pwd)":/app \
+    -w /app \
+    "$IMAGE" git "$@"
+}
+
+# if called directly, dispatch to our function
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  git "$@"
+fi
