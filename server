@@ -20,10 +20,17 @@ source "$directory/docker/utilities/profiles"
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --*=*) key="${1%%=*}"; val="${1#*=}"; options["$key"]="$val";;
-      --*) options["$1"]=true;;
-      -*) short="${1:1}"; options["-$short"]=true;;
-      *) positional+=("$1");;
+    --*=*)
+      key="${1%%=*}"
+      val="${1#*=}"
+      options["$key"]="$val"
+      ;;
+    --*) options["$1"]=true ;;
+    -*)
+      short="${1:1}"
+      options["-$short"]=true
+      ;;
+    *) positional+=("$1") ;;
     esac
     shift
   done
@@ -33,11 +40,11 @@ parse_args() {
 get_description() {
   local fn="cmd_$1"
   local desc=""
-  
+
   if declare -f "$fn" >/dev/null; then
     desc=$(declare -f "$fn" | grep -Eo '^#\s.*' | head -1 | sed 's/^# //' || true)
   fi
-  
+
   # fallback gracefully, no "unbound" issue due to empty map
   echo "${desc:-${descriptions[$1]-}}"
 }
@@ -82,7 +89,10 @@ init() {
 cmd_up() { docker_compose up; }
 
 # Start Docker services (background) + reload HTTP
-cmd_start() { docker_compose up -d; reload_http_containers; }
+cmd_start() {
+  docker_compose up -d
+  reload_http_containers
+}
 
 # Alias for start
 cmd_reload() { cmd_start; }
@@ -94,7 +104,10 @@ cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
 
 # Stop & start Docker services
-cmd_reboot() { cmd_stop; cmd_start; }
+cmd_reboot() {
+  cmd_stop
+  cmd_start
+}
 
 # Alias for reboot
 cmd_restart() { cmd_reboot; }
@@ -130,46 +143,46 @@ cmd_core() {
 # Setup tasks (permissions, domain, profiles, env)
 cmd_setup() {
   case "${positional[1]:-}" in
-    permissions|perms|perm|permission)
-      assign_permissions
-      printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
-      ;;
-    domain)
-      docker exec SERVER_TOOLS mkhost --RESET
-      docker exec -it SERVER_TOOLS mkhost
-      local pprofile=$(docker exec SERVER_TOOLS mkhost --ACTIVE_PHP_PROFILE)
-      if [[ $? -eq 0 && -n "$pprofile" ]]; then
-        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$pprofile"
-      fi
-      local sprofile=$(docker exec SERVER_TOOLS mkhost --APACHE_ACTIVE)
-      if [[ $? -eq 0 && -n "$sprofile" ]]; then
-        modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$sprofile"
-      fi
-      docker exec SERVER_TOOLS mkhost --RESET
-      ;;
-    profiles|profile)
-      process_all
-      ;;
-    env)
-      local env_file="$directory/.env"
-      [[ "${positional[2]:-}" == "docker" ]] && env_file="$directory/docker/.env"
-      process_env_file "$env_file"
-      ;;
-    *)
-      printf "${RED}Invalid setup command: %s${NC}\n" "${positional[1]:-}"
-      ;;
+  permissions | perms | perm | permission)
+    assign_permissions
+    printf "${GREEN}Necessary Permissions have been assigned.${NC}\n"
+    ;;
+  domain)
+    docker exec SERVER_TOOLS mkhost --RESET
+    docker exec -it SERVER_TOOLS mkhost
+    local pprofile=$(docker exec SERVER_TOOLS mkhost --ACTIVE_PHP_PROFILE)
+    if [[ $? -eq 0 && -n "$pprofile" ]]; then
+      modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$pprofile"
+    fi
+    local sprofile=$(docker exec SERVER_TOOLS mkhost --APACHE_ACTIVE)
+    if [[ $? -eq 0 && -n "$sprofile" ]]; then
+      modify_compose_profiles "$directory/docker/.env" "COMPOSE_PROFILES" "add" "$sprofile"
+    fi
+    docker exec SERVER_TOOLS mkhost --RESET
+    ;;
+  profiles | profile)
+    process_all
+    ;;
+  env)
+    local env_file="$directory/.env"
+    [[ "${positional[2]:-}" == "docker" ]] && env_file="$directory/docker/.env"
+    process_env_file "$env_file"
+    ;;
+  *)
+    printf "${RED}Invalid setup command: %s${NC}\n" "${positional[1]:-}"
+    ;;
   esac
 }
 
 # Install components (e.g., certificate)
 cmd_install() {
   case "${positional[1]:-}" in
-    certificate)
-      install_root_ca
-      ;;
-    *)
-      printf "${RED}Invalid install command: %s${NC}\n" "${positional[1]:-}"
-      ;;
+  certificate)
+    install_root_ca
+    ;;
+  *)
+    printf "${RED}Invalid install command: %s${NC}\n" "${positional[1]:-}"
+    ;;
   esac
 }
 
@@ -183,9 +196,20 @@ main() {
     print_usage
     exit 1
   fi
+  local flag positional raw
+  for flag in "${!options[@]}"; do
+    positional+=("$flag")
+  done
 
   parse_args "$@"
   init
+  raw=("$@")
+  case "${raw[0],,}" in
+    php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|redis)
+      "$directory/bin/${raw[0]}" "${raw[@]:1}"
+      return
+      ;;
+  esac
   run_command "${positional[0]}"
   unset directory
 }

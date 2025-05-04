@@ -36,8 +36,8 @@ redis_cli() {
   fi
 
   # 2) detect TTY vs non-TTY
-  local FLAGS="-i"
-  [[ -t 0 ]] && FLAGS="-it"
+  local FLAGS=$([[ -t 0 ]] && echo -it || echo -i)
+  FLAGS+=" --rm -v $PWD:/workspace -w /workspace"
 
   # 3) build client args
   local ARGS=()

@@ -128,7 +128,7 @@ assign_permissions() {
 
   chmod 755 "$directory/docker/"
   find "$directory/docker/" -type f ! -perm 644 -exec chmod 644 {} \;
-  find "$directory/docker/dockerfiles/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
+#  find "$directory/docker/dockerfiles/scripts/" -type f ! -perm 755 -exec chmod 755 {} \;
 
   chmod 2777 "$directory/data"
   find "$directory/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} \;
@@ -140,6 +140,8 @@ assign_permissions() {
   chmod 755 "$directory/bin"
   find "$directory/bin" -type f ! -name '*.bat' ! -perm 744 -exec chmod 744 {} \;
   chmod 744 "$directory/server"
+
+  ln -s "$directory/server" "/usr/local/bin/server"
 }
 
 modify_compose_profiles() {

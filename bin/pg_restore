@@ -22,7 +22,8 @@ pg_restore() {
     return 1
   fi
 
-  local FLAGS="-i"; [[ -t 0 ]] && FLAGS="-it"
+  local FLAGS=$([[ -t 0 ]] && echo -it || echo -i)
+  FLAGS+=" --rm -v $PWD:/workspace -w /workspace"
 
   local ARGS=()
   if $login; then

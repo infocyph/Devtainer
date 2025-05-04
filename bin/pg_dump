@@ -24,7 +24,8 @@ pg_dump() {
   fi
 
   # TTY detection
-  local FLAGS="-i"; [[ -t 0 ]] && FLAGS="-it"
+  local FLAGS=$([[ -t 0 ]] && echo -it || echo -i)
+  FLAGS+=" --rm -v $PWD:/workspace -w /workspace"
 
   # build args
   local ARGS=()

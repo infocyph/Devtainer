@@ -1,49 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ────────────────────────────────────────────────────────────────
-# 1) Parse -V <version> flag
-# ────────────────────────────────────────────────────────────────
+# parse args: look for a -V <version> anywhere, collect the rest
 TARGET=""
-if [[ "${1:-}" == "-V" ]]; then
-  if [[ -n "${2:-}" ]]; then
-    TARGET="PHP_${2}"
-    shift 2
-  else
-    echo "Error: -V requires a version (e.g. -V 8.3)" >&2
+EXPLICIT=false
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -V)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: -V requires a version (e.g. -V 8.3)" >&2
+        exit 1
+      fi
+      TARGET="PHP_${2}"
+      EXPLICIT=true
+      shift 2
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# if -V was given, it must exist
+if [[ $EXPLICIT == true ]]; then
+  if ! docker ps --format '{{.Names}}' | grep -qx "$TARGET"; then
+    echo "Error: container '$TARGET' is not running." >&2
+    exit 1
+  fi
+else
+  # otherwise auto-detect highest version
+  for v in 8.4 8.3 8.2 8.1 8.0 7.4 7.3; do
+    cname="PHP_$v"
+    if docker ps --format '{{.Names}}' | grep -qx "$cname"; then
+      TARGET="$cname"
+      break
+    fi
+  done
+  if [[ -z "$TARGET" ]]; then
+    echo "Error: no PHP container is running." >&2
     exit 1
   fi
 fi
 
-# ────────────────────────────────────────────────────────────────
-# 2) Auto-detect highest version if none specified
-# ────────────────────────────────────────────────────────────────
-if [[ -z "$TARGET" ]]; then
-  for v in 8.4 8.3 8.2 8.1 8.0 7.4 7.3; do
-    if docker ps --format '{{.Names}}' | grep -qx "PHP_$v"; then
-      TARGET="PHP_$v"
-      break
-    fi
-  done
-fi
-
-if [[ -z "$TARGET" ]]; then
-  echo "Error: no PHP container (PHP_8.4 … PHP_7.3) is running." >&2
-  exit 1
-fi
-
-# ────────────────────────────────────────────────────────────────
-# 3) Look up the container’s image
-# ────────────────────────────────────────────────────────────────
+# determine image, build run flags, and invoke PHP
 IMAGE=$(docker inspect -f '{{.Config.Image}}' "$TARGET")
-
-# ────────────────────────────────────────────────────────────────
-# 4) Build docker run flags
-# ────────────────────────────────────────────────────────────────
 RUN_FLAGS=(--rm -v "$PWD":/workspace -w /workspace)
 [[ -t 0 ]] && RUN_FLAGS+=(-it) || RUN_FLAGS+=(-i)
 
-# ────────────────────────────────────────────────────────────────
-# 5) Exec php with whatever remains
-# ────────────────────────────────────────────────────────────────
-docker run "${RUN_FLAGS[@]}" "$IMAGE" php "$@"
+exec docker run "${RUN_FLAGS[@]}" "$IMAGE" php "${ARGS[@]}"
