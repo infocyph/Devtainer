@@ -1,3 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-docker exec -it SERVER_TOOLS lazydocker
+lazydocker() {
+  local SERVICE="SERVER_TOOLS"
+  # ensure container is running
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE"; then
+    echo "Error: container '$SERVICE' is not running." >&2
+    return 1
+  fi
+
+  # hand off to lazydocker inside the container
+  exec docker exec -it "$SERVICE" lazydocker
+}
+
+# if run directly, invoke the function
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  lazydocker
+fi
