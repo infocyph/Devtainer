@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ————————————————————————————————————————————————
+# 0) Load docker/.env (skip readonly UID)
+# ————————————————————————————————————————————————
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../docker/.env"
+
+if [[ -r "$ENV_FILE" ]]; then
+  set -o allexport
+  # shellcheck disable=SC1090
+  source <(grep -v '^UID=' "$ENV_FILE")
+  set +o allexport
+else
+  echo "Warning: .env file not found at $ENV_FILE" >&2
+fi
+
+# ————————————————————————————————————————————————
+# psql(): wrapper around psql inside Docker
+#    --login : pull creds from .env
+# ————————————————————————————————————————————————
+psql() {
+  local login=false
+  if [[ "${1:-}" == "--login" ]]; then
+    login=true
+    shift
+  fi
+
+  local SERVICE_NAME="POSTGRESQL"
+
+  # 1) ensure container is running
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE_NAME"; then
+    echo "Error: container '$SERVICE_NAME' is not running." >&2
+    return 1
+  fi
+
+  # 2) detect TTY vs non-TTY
+  local FLAGS="-i"
+  [[ -t 0 ]] && FLAGS="-it"
+
+  # 3) build client args
+  local ARGS=()
+  if [[ "$login" == true ]]; then
+    ARGS+=(-h127.0.0.1 -p"$POSTGRESQL_PORT" -U"$POSTGRESQL_USER")
+    [[ -n "${POSTGRESQL_DATABASE:-}" ]] && ARGS+=(-d "$POSTGRESQL_DATABASE")
+    ARGS+=("$@")
+  else
+    ARGS+=("$@")
+  fi
+
+  # 4) pass the password into the container via env
+  exec docker exec $FLAGS \
+       -e PGPASSWORD="$POSTGRESQL_PASSWORD" \
+       "$SERVICE_NAME" \
+       psql "${ARGS[@]}"
+}
+
+# ————————————————————————————————————————————————
+# if script is run (not sourced), invoke the function
+# ————————————————————————————————————————————————
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  psql "$@"
+fi

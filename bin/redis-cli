@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ————————————————————————————————————————————————
+# 0) Load docker/.env (skip readonly UID)
+# ————————————————————————————————————————————————
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../docker/.env"
+
+if [[ -r "$ENV_FILE" ]]; then
+  set -o allexport
+  # shellcheck disable=SC1090
+  source <(grep -v '^UID=' "$ENV_FILE")
+  set +o allexport
+else
+  echo "Warning: .env file not found at $ENV_FILE" >&2
+fi
+
+# ————————————————————————————————————————————————
+# redis_cli(): wrapper around redis-cli inside Docker
+#    --login : pull creds (REDIS_PORT, REDIS_PASSWORD, REDIS_DATABASE) from .env
+# ————————————————————————————————————————————————
+redis_cli() {
+  local login=false
+  if [[ "${1:-}" == "--login" ]]; then
+    login=true
+    shift
+  fi
+
+  local SERVICE_NAME="REDIS"
+
+  # 1) ensure container is running
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE_NAME"; then
+    echo "Error: container '$SERVICE_NAME' is not running." >&2
+    return 1
+  fi
+
+  # 2) detect TTY vs non-TTY
+  local FLAGS="-i"
+  [[ -t 0 ]] && FLAGS="-it"
+
+  # 3) build client args
+  local ARGS=()
+  if [[ "$login" == true ]]; then
+    ARGS+=( -h 127.0.0.1 )
+    [[ -n "${REDIS_PORT:-}" ]]     && ARGS+=( -p "$REDIS_PORT" )
+    [[ -n "${REDIS_PASSWORD:-}" ]] && ARGS+=( -a "$REDIS_PASSWORD" )
+    [[ -n "${REDIS_DATABASE:-}" ]] && ARGS+=( -n "$REDIS_DATABASE" )
+    ARGS+=( "$@" )
+  else
+    ARGS+=( "$@" )
+  fi
+
+  # 4) exec into the container’s redis-cli
+  exec docker exec $FLAGS "$SERVICE_NAME" redis-cli "${ARGS[@]}"
+}
+
+# ————————————————————————————————————————————————
+# if script is run (not sourced), invoke the function
+# ————————————————————————————————————————————————
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  redis_cli "$@"
+fi

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# — load .env (skip UID) —
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../docker/.env"
+if [[ -r "$ENV_FILE" ]]; then
+  set -o allexport
+  source <(grep -v '^UID=' "$ENV_FILE")
+  set +o allexport
+else
+  echo "Warning: .env file not found at $ENV_FILE" >&2
+fi
+
+pg_dump() {
+  local login=false
+  [[ "${1:-}" == "--login" ]] && login=true && shift
+
+  local SERVICE="POSTGRESQL"
+  # ensure container
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE"; then
+    echo "Error: '$SERVICE' not running." >&2
+    return 1
+  fi
+
+  # TTY detection
+  local FLAGS="-i"; [[ -t 0 ]] && FLAGS="-it"
+
+  # build args
+  local ARGS=()
+  if $login; then
+    ARGS+=( -h127.0.0.1 -p"$POSTGRESQL_PORT" -U"$POSTGRESQL_USER" )
+    if [[ $# -eq 0 ]]; then
+      [[ -n "${POSTGRESQL_DATABASE:-}" ]] \
+        && ARGS+=( -d "$POSTGRESQL_DATABASE" ) \
+        || { echo "Error: no database specified and POSTGRESQL_DATABASE unset." >&2; return 1; }
+    else
+      ARGS+=( "$@" )
+    fi
+  else
+    ARGS+=( "$@" )
+  fi
+
+  exec docker exec $FLAGS \
+    -e PGPASSWORD="$POSTGRESQL_PASSWORD" \
+    "$SERVICE" pg_dump "${ARGS[@]}"
+}
+
+# invoke if run directly
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && pg_dump "$@"

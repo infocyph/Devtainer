@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ————————————————————————————————————————————————
+# 0) find & load your docker/.env (skip readonly UID)
+# ————————————————————————————————————————————————
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../docker/.env"
+
+if [[ -r "$ENV_FILE" ]]; then
+  set -o allexport
+  # filter out the readonly UID var
+  # shellcheck disable=SC1090
+  source <(grep -v '^UID=' "$ENV_FILE")
+  set +o allexport
+else
+  echo "Warning: .env file not found at $ENV_FILE" >&2
+fi
+
+# ————————————————————————————————————————————————
+# mariadb(): if --login is passed, use env credentials,
+# otherwise just pass your args straight through.
+# ————————————————————————————————————————————————
+mariadb() {
+  local login=false
+  if [[ "${1:-}" == "--login" ]]; then
+    login=true
+    shift
+  fi
+
+  local SERVICE_NAME="MARIADB"
+  # 1) check that the container is running
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE_NAME"; then
+    echo "Error: container '$SERVICE_NAME' is not running." >&2
+    return 1
+  fi
+
+  # 2) detect TTY vs non-TTY
+  local FLAGS="-i"
+  [[ -t 0 ]] && FLAGS="-it"
+
+  # 3) build the client args
+  local CLIENT_ARGS=()
+  if [[ "$login" == true ]]; then
+    CLIENT_ARGS+=(-h127.0.0.1 -P"$MARIADB_PORT" -u"$MARIADB_USER" -p"$MARIADB_PASSWORD")
+    [[ -n "${MARIADB_DATABASE:-}" ]] && CLIENT_ARGS+=("$MARIADB_DATABASE")
+    CLIENT_ARGS+=("$@")
+  else
+    CLIENT_ARGS+=("$@")
+  fi
+
+  # 4) hand off to docker
+  exec docker exec $FLAGS "$SERVICE_NAME" mariadb "${CLIENT_ARGS[@]}"
+}
+
+# ————————————————————————————————————————————————
+# if this file is run (not sourced), forward to the function
+# ————————————————————————————————————————————————
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  mariadb "$@"
+fi

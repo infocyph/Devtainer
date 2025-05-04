@@ -116,11 +116,10 @@ launch_php_container() {
 }
 
 assign_permissions() {
-  if [[ "$(uname -s)" == *NT* || "$(uname -o)" =~ (Msys|Cygwin) ]]; then return; fi
-  if [[ "$EUID" -ne 0 ]]; then
-    echo -e "${RED}Please run with sudo.${NC}"
-    return
-  fi
+  case "$(uname -s)" in
+    *NT*|*Msys*|*Cygwin*) return ;;
+  esac
+  (( EUID == 0 )) || { echo -e "${RED}Please run with sudo.${NC}"; return; }
 
   chmod 755 "$directory"
   chmod 775 "$directory/configuration/"
@@ -138,9 +137,8 @@ assign_permissions() {
   chmod -R 777 "$directory/logs/"
   chown -R "$USER:docker" "$directory/logs/"
 
-  chmod 755 "$directory/bin/"
-  find "$directory/bin/" -type f ! -perm 744 -exec chmod 744 {} \;
-
+  chmod 755 "$directory/bin"
+  find "$directory/bin" -type f ! -name '*.bat' ! -perm 744 -exec chmod 744 {} \;
   chmod 744 "$directory/server"
 }
 
