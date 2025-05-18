@@ -7,7 +7,7 @@ set -euo pipefail
 ###############################################################################
 # 0. PATHS & CONSTANTS
 ###############################################################################
-DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
 CFG="$DIR/docker"
 ENV_MAIN="$DIR/.env"
 ENV_DOCKER="$CFG/.env"
