@@ -180,7 +180,7 @@ cmd_help() {
 ${CYAN}Usage:${NC} server <command> [options]
 
 ${CYAN}Core commands:${NC}
-  up / start [ -d ]          Start docker stack
+  up / start                 Start docker stack ( up for foreground )
   stop / down                Stop stack
   reload / restart           Restart stack + reload HTTP
   rebuild                    Rebuild images (no cache)
@@ -217,7 +217,7 @@ main() {
       exec "$DIR/bin/$1" "${@:2}" ;;
   esac
 
-  cmd_${1,,} "$@"
+  cmd_"${1,,}" "$@"
 }
 
 main "$@"
