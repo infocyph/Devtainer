@@ -159,7 +159,7 @@ cmd_config()      { docker_compose config; }
 cmd_tools()       { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd()         { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_http()        { [[ $2 == reload ]] && http_reload; }
-cmd_core()        { [[ $2 ]] || die "Usage: server core <domain>"; launch_php "$2"; }
+cmd_core()        { [[ -n ${2:-} ]] || die "Usage: server core <domain>"; launch_php "$2"; }
 
 cmd_setup() {
   case ${2:-} in
