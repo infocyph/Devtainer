@@ -73,44 +73,6 @@ ask_yes() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# General settings (formerly "common variables")
-# ─────────────────────────────────────────────────────────────────────────────
-prompt_general_settings() {
-  echo -e "${YELLOW}→ General Settings${NC}"
-  # Timezone
-  local default_tz tz
-  if command -v timedatectl &>/dev/null; then
-    default_tz=$(timedatectl show -p Timezone --value)
-  elif [[ -n "${TZ-}" ]]; then
-    default_tz="$TZ"
-  elif command -v powershell.exe &>/dev/null; then
-    default_tz=$(powershell.exe -NoProfile -Command "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r')
-  elif [[ -f /etc/timezone ]]; then
-    default_tz=$(< /etc/timezone)
-  else
-    default_tz=$(date +%Z)
-  fi
-  tz=$(read_default "Timezone (TZ)" "$default_tz")
-  queue_env "TZ=$tz"
-  # User / UID / GID
-  local default_user user default_uid default_gid uid gid
-  default_user=${USER:-$(id -un)}
-  user=$(read_default "User" "$default_user")
-  if id "$user" &>/dev/null; then
-    default_uid=$(id -u "$user")
-    default_gid=$(id -g "$user")
-  else
-    default_uid=$(id -u)
-    default_gid=$(id -g)
-  fi
-  uid=$(read_default "User UID" "$default_uid")
-  gid=$(read_default "User GID" "$default_gid")
-  queue_env "USER=$user"
-  queue_env "UID=$uid"
-  queue_env "GID=$gid"
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Handle one service
 # ─────────────────────────────────────────────────────────────────────────────
 process_service() {
@@ -135,11 +97,6 @@ process_service() {
 # Main flow: conditional general settings + services
 # ─────────────────────────────────────────────────────────────────────────────
 process_all() {
-  if ask_yes "Configure general settings?"; then
-    prompt_general_settings
-  else
-    echo -e "${RED}Skipping general settings${NC}"
-  fi
   local svc
   for svc in "${!SERVICES[@]}"; do
     process_service "$svc"

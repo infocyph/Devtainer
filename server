@@ -179,7 +179,7 @@ mkhost() { docker exec SERVER_TOOLS mkhost "$@"; }
 
 setup_domain() {
   mkhost --RESET
-  mkhost
+  docker exec -it SERVER_TOOLS mkhost
   local php_prof svr_prof
   php_prof=$(mkhost --ACTIVE_PHP_PROFILE || true)
   svr_prof=$(mkhost --APACHE_ACTIVE || true)
@@ -260,6 +260,63 @@ launch_php() {
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENV
+# ─────────────────────────────────────────────────────────────────────────────
+read_default() {
+  local prompt=$1 default=$2 input
+  read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input
+  printf '%s' "${input:-$default}"
+}
+detect_timezone() {
+  if command -v timedatectl &>/dev/null; then
+    timedatectl show -p Timezone --value
+  elif [[ -n ${TZ-} ]]; then
+    printf '%s' "$TZ"
+  elif [[ -r /etc/timezone ]]; then
+    </etc/timezone
+  elif command -v powershell.exe &>/dev/null; then
+    powershell.exe -NoProfile -Command \
+      "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
+  else
+    date +%Z
+  fi
+}
+env_init() {
+  local env_file="$DIR/docker/.env"
+  printf "%bBootstrapping environment defaults…%b\n" "$YELLOW" "$NC"
+
+  # Timezone
+  local default_tz tz
+  default_tz=$(detect_timezone)
+  tz=$(read_default "Timezone (TZ)" "$default_tz")
+
+  # User / UID / GID
+  local default_user user default_uid default_gid uid gid
+  default_user=${USER:-$(id -un)}
+  user=$(read_default "User" "$default_user")
+  if id "$user" &>/dev/null; then
+    default_uid=$(id -u "$user")
+    default_gid=$(id -g "$user")
+  else
+    default_uid=$(id -u); default_gid=$(id -g)
+  fi
+  uid=$(read_default "User UID" "$default_uid")
+  gid=$(read_default "User GID" "$default_gid")
+
+  # Write them out
+  local kv key val
+  for kv in \
+    "TZ=$tz" \
+    "USER=$user" \
+    "UID=$uid" \
+    "GID=$gid"
+  do
+    IFS='=' read -r key val <<<"$kv"
+    update_env "$env_file" "$key" "$val"
+  done
+  printf "%bDefaults saved!%b\n" "$GREEN" "$NC"
+}
 ###############################################################################
 # 5. ROOT-CA INSTALL
 ###############################################################################
@@ -300,6 +357,7 @@ cmd_config() { docker_compose config; }
 cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_http() { [[ $1 == reload ]] && http_reload; }
+cmd_cli() { cmd_core "$@"; }
 cmd_core() {
   local domain=${1:-}
   [[ -n $domain ]] || die "Usage: server core <domain>"
@@ -311,12 +369,15 @@ cmd_setup() {
   permission | permissions | perms | perm) fix_perms ;;
   domain) setup_domain ;;
   profiles | profile) process_all ;;
-  env)
-    local file=$ENV_MAIN
-    [[ $3 == docker ]] && file=$ENV_DOCKER
-    "${DIR}/bin/env-helper" "$file"
-    ;;
-  *) die "setup <permissions|domain|profiles|env>" ;;
+  *) die "setup <permissions|domain|profiles>" ;;
+  esac
+}
+
+cmd_env() {
+  case ${1:-} in
+  init|boot) env_init ;;
+  edit) die "ToDo" ;;
+  *) die "env <init|edit>" ;;
   esac
 }
 
@@ -341,7 +402,9 @@ ${CYAN}Setup commands:${NC}
   setup permissions          Fix file permissions
   setup domain               Run mkhost + auto-profile
   setup profiles add|remove <name…>
-  setup env [docker]         Interactive .env editor
+
+${CYAN}Env commands:${NC}
+  env init|boot               Setup Initial level environment variables (TZ, USER, UID, GID)
 
 ${CYAN}Misc:${NC}
   install certificate        Install local rootCA
