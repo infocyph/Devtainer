@@ -394,14 +394,14 @@ ${CYAN}Core commands:${NC}
   rebuild                    Rebuild images (no cache)
   config                     Validate compose
   tools                      Enter SERVER_TOOLS container
-  lzd | lazydocker           Start LazyDocker in SERVER_TOOLS
+  lzd | lazydocker           Start LazyDocker
   http reload                Reload Nginx/Apache
   core <domain>              Open bash in PHP container for <domain>
 
 ${CYAN}Setup commands:${NC}
-  setup permissions          Fix file permissions
-  setup domain               Run mkhost + auto-profile
-  setup profiles add|remove <name…>
+  setup permissions          Assign/Fix directory/file permissions
+  setup domain               Setup domain
+  setup profiles             Setup database profiles
 
 ${CYAN}Env commands:${NC}
   env init|boot               Setup Initial level environment variables (TZ, USER, UID, GID)
