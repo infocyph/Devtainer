@@ -43,7 +43,7 @@ queue_env()      { PENDING_ENVS+=( "$1" ); }
 queue_profile()  { PENDING_PROFILES+=( "$1" ); }
 
 flush_envs() {
-  local env_file="$directory/docker/.env" kv
+  local env_file="$DIR/docker/.env" kv
   for kv in "${PENDING_ENVS[@]}"; do
     IFS='=' read -r key val <<<"$kv"
     update_env "$env_file" "$key" "$val"
@@ -51,7 +51,7 @@ flush_envs() {
 }
 
 flush_profiles() {
-  local env_file="$directory/docker/.env" profile
+  local env_file="$DIR/docker/.env" profile
   for profile in "${PENDING_PROFILES[@]}"; do
     modify_compose_profiles "$env_file" "COMPOSE_PROFILES" "add" "$profile"
   done

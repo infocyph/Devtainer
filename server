@@ -4,6 +4,25 @@
 
 set -euo pipefail
 
+#───────────────────────────────────────────────────────────────────────────────
+# 0. GLOBAL ERROR HANDLER
+#───────────────────────────────────────────────────────────────────────────────
+command_not_found_handle() {
+  local unknown="$1"
+  [[ $unknown == cmd_* ]] && unknown=${unknown#cmd_}
+  printf "\n%bError:%b Unknown command '%s'\n\n" "$RED" "$NC" "$unknown"
+  cmd_help
+  exit 1
+}
+
+# Your existing ERR trap (optional)
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+on_error() {
+  printf "\n%bError:%b '%s' failed at line %d (exit %d)\n\n" \
+    "$RED" "$NC" "$3" "$2" "$1"
+  exit "$1"
+}
+
 ###############################################################################
 # 0. PATHS & CONSTANTS
 ###############################################################################
@@ -15,64 +34,142 @@ COMPOSE_FILE="$CFG/compose/main.yaml"
 COLOR() { printf '\033[%sm' "$1"; }
 RED=$(COLOR '0;31') GREEN=$(COLOR '0;32') CYAN=$(COLOR '0;36')
 YELLOW=$(COLOR '1;33') NC=$(COLOR '0')
-
+source "$CFG/utilities/profiles"
 ###############################################################################
 # 1. COMMON HELPERS
 ###############################################################################
-die() { printf "%bError:%b %s\n" "$RED" "$NC" "$*"; exit 1; }
+die() {
+  printf "%bError:%b %s\n" "$RED" "$NC" "$*"
+  exit 1
+}
 
-need() { command -v "$1" &>/dev/null || die "'$1' not installed"; }
+need() {
+  local group found cmd
+
+  for group in "$@"; do
+    IFS='|,' read -ra alts <<<"$group" # split on ‘|’ or ‘,’
+    found=0
+    for cmd in "${alts[@]}"; do
+      command -v "$cmd" &>/dev/null && {
+        found=1
+        break
+      }
+    done
+    ((found)) && continue
+
+    # compose “foo or bar or baz” for the error
+    local miss=${alts[*]}
+    miss=${miss// / or }
+    die "Missing command(s): $miss"
+  done
+}
+
+ensure_files_exist() {
+  local rel abs dir
+
+  for rel in "$@"; do
+    abs="${DIR}${rel}" # absolute path inside project
+    dir="${abs%/*}"    # fast dirname
+
+    # ── Directory checks ─────────────────────────────────────────────
+    if [[ ! -d $dir ]]; then
+      if mkdir -p "$dir" 2>/dev/null; then
+        printf "%b- Created directory %s%b\n" "$YELLOW" "$dir" "$NC"
+      else
+        printf "%b- Warning:%b cannot create directory %s (permissions?)\n" \
+          "$YELLOW" "$NC" "$dir"
+        continue # skip file creation; go next path
+      fi
+    elif [[ ! -w $dir ]]; then
+      printf "%b- Warning:%b directory not writable: %s\n" \
+        "$YELLOW" "$NC" "$dir"
+    fi
+
+    # ── File checks ──────────────────────────────────────────────────
+    if [[ -e $abs ]]; then
+      [[ -w $abs ]] || printf "%b- Warning:%b file not writable: %s\n" \
+        "$YELLOW" "$NC" "$abs"
+    else
+      if : >"$abs" 2>/dev/null; then
+        printf "%b- Created file %s%b\n" "$YELLOW" "$abs" "$NC"
+      else
+        printf "%b- Error:%b cannot create file %s (permissions?)\n" \
+          "$RED" "$NC" "$abs"
+      fi
+    fi
+  done
+}
 
 docker_compose() {
-  docker compose                                      \
-    --project-directory "$DIR"                        \
-    -f "$COMPOSE_FILE"                                \
+  docker compose \
+    --project-directory "$DIR" \
+    -f "$COMPOSE_FILE" \
     --env-file "$ENV_DOCKER" "$@"
 }
 
-update_env() {                                    # update_env <file> <VAR> <value>
-  local file=$1 var=$2 val=$3; mkdir -p "$(dirname "$file")"
-  grep -qE "^[# ]*$var=" "$file" 2>/dev/null \
-    && sed -Ei "s|^[# ]*($var)=.*|\1=$val|" "$file" \
-    || echo "$var=$val" >>"$file"
+update_env() { # update_env <file> <VAR> <value>
+  local file=$1 var=$2 val=$3
+  mkdir -p "$(dirname "$file")"
+  [ ! -f "$file" ] && {
+    printf "%sFile '$file' not found. Creating one.%s\n" "$YELLOW" "$NC"
+    touch "$file"
+  }
+  var=$(echo "$var" | sed 's/[]\/$*.^|[]/\\&/g')
+  grep -qE "^[# ]*$var=" "$file" 2>/dev/null &&
+    sed -Ei "s|^[# ]*($var)=.*|\1=$val|" "$file" ||
+    echo "$var=$val" >>"$file"
 }
 
 http_reload() {
   printf "%sReloading HTTP…%s\n" "$GREEN" "$NC"
-  docker ps -qf name=NGINX  && docker exec NGINX nginx -s reload  &>/dev/null || true
-  docker ps -qf name=APACHE && docker exec APACHE apachectl graceful &>/dev/null || true
+  if docker ps -qf name=NGINX &>/dev/null; then
+    docker exec NGINX nginx -s reload &>/dev/null || true
+  fi
+  if docker ps -qf name=APACHE &>/dev/null; then
+    docker exec APACHE apachectl graceful &>/dev/null || true
+  fi
   printf "%sHTTP reloaded%s\n" "$GREEN" "$NC"
 }
-
-chmod_tree() { find "$1" "$2" -exec chmod "$3" {} +; }
 
 ###############################################################################
 # 2. PERMISSIONS FIX-UP
 ###############################################################################
 fix_perms() {
-  [[ $EUID -eq 0 ]] || die "Run 'server setup permissions' with sudo"
+  # ── Skip on Windows/MSYS/Cygwin ─────────────────────────────────────────
+  [[ "$OSTYPE" =~ (msys|cygwin) ]] && return
 
+  # ── Must be root ────────────────────────────────────────────────────────
+  ((EUID == 0)) || die "Please run with sudo."
+
+  # ── Project root ───────────────────────────────────────────────────────
   chmod 755 "$DIR"
 
-  chmod 775 "$DIR/configuration"
-  chmod_tree "$DIR/configuration" -type f 664
-  chmod g+s   "$DIR/configuration"
+  # ── configuration/ (dir=775+setgid → 2775, files=664) ────────────────────
+  chmod 2775 "$DIR/configuration"
+  find "$DIR/configuration" -type f ! -perm 664 -exec chmod 664 {} +
 
+  # ── docker/        (dir=755, files=644) ────────────────────────────────
   chmod 755 "$DIR/docker"
-  chmod_tree "$DIR/docker" -type f 644
+  find "$DIR/docker" -type f ! -perm 644 -exec chmod 644 {} +
 
+  # ── data/          (dir=2777, first-level dirs=2777, files=666) ────────
   chmod 2777 "$DIR/data"
   find "$DIR/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} +
-  chmod_tree "$DIR/data" -type f 666
+  find "$DIR/data" -type f -exec chmod 666 {} +
 
+  # ── logs/          (recursive 777 + chown host-user:docker) ───────────
   chmod -R 777 "$DIR/logs"
+  chown -R "$USER:docker" "$DIR/logs"
 
+  # ── bin/           (dir=755, files=744 except .bat) ────────────────────
   chmod 755 "$DIR/bin"
   find "$DIR/bin" -type f ! -name '*.bat' -exec chmod 744 {} +
   chmod 744 "$DIR/server"
 
-  ln -sf "$DIR/server" /usr/local/bin/server
-  printf "%sPermissions assigned%s\n" "$GREEN" "$NC"
+  # ── Symlink        (force-update) ───────────────────────────────────────
+  ln -fs "$DIR/server" /usr/local/bin/server
+
+  printf "%sPermissions assigned.%s\n" "$GREEN" "$NC"
 }
 
 ###############################################################################
@@ -83,32 +180,61 @@ mkhost() { docker exec SERVER_TOOLS mkhost "$@"; }
 setup_domain() {
   mkhost --RESET
   mkhost
-  local php_prof; php_prof=$(mkhost --ACTIVE_PHP_PROFILE || true)
-  local svr_prof; svr_prof=$(mkhost --APACHE_ACTIVE     || true)
+  local php_prof svr_prof
+  php_prof=$(mkhost --ACTIVE_PHP_PROFILE || true)
+  svr_prof=$(mkhost --APACHE_ACTIVE || true)
   [[ -n $php_prof ]] && modify_profiles add "$php_prof"
   [[ -n $svr_prof ]] && modify_profiles add "$svr_prof"
   mkhost --RESET
 }
 
-modify_profiles() {                                # add/remove <profile …>
-  local action=$1; shift
-  local current=$(grep -E "^COMPOSE_PROFILES=" "$ENV_DOCKER" | cut -d= -f2- | tr , '\n')
-  local -a new=()
+# modify_profiles <add|remove> <profile1> [profile2…]
+modify_profiles() {
+  local action=$1
+  shift
+  local file=$ENV_DOCKER var=COMPOSE_PROFILES
+  local -a existing updated
 
+  # ── Load existing profiles (only the last COMPOSE_PROFILES= line) ──────
+  if [[ -r $file ]]; then
+    local line value
+    line=$(grep -E "^${var}=" "$file" | tail -n1 || true)
+    value=${line#*=}
+    IFS=',' read -r -a existing <<<"$value"
+  fi
+
+  # ── Compute updated list ───────────────────────────────────────────────
   case $action in
-    add)     new=("$@" $current) ;;
-    remove)  for p in $current; do [[ ! " $* " =~ " $p " ]] && new+=("$p"); done ;;
-    *) die "modify_profiles: invalid action '$action'" ;;
+  add)
+    local p
+    for p; do
+      [[ -n $p && ! " ${existing[*]} " =~ " $p " ]] && updated+=("$p")
+    done
+    updated+=("${existing[@]}")
+    ;;
+  remove)
+    local old
+    for old in "${existing[@]}"; do
+      [[ ! " $* " =~ " $old " ]] && updated+=("$old")
+    done
+    ;;
+  *)
+    die "modify_profiles: invalid action '$action'"
+    ;;
   esac
 
-  IFS=, update_env "$ENV_DOCKER" COMPOSE_PROFILES "${new[*]}"
+  # ── Write it back as a comma-separated value ───────────────────────────
+  update_env "$file" "$var" "$(
+    IFS=,
+    echo "${updated[*]}"
+  )"
 }
 
 ###############################################################################
 # 4. LAUNCH PHP CONTAINER INSIDE DOCROOT (unchanged behaviour)
 ###############################################################################
 launch_php() {
-  local domain=$1
+  local domain=$1 suffix
   local nconf="$DIR/configuration/nginx/$domain.conf"
   local aconf="$DIR/configuration/apache/$domain.conf"
   [[ -f $nconf ]] || die "No Nginx config for $domain"
@@ -124,6 +250,12 @@ launch_php() {
   fi
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
+  for suffix in public dist public_html; do
+    if [[ $docroot == */$suffix ]]; then
+      docroot=${docroot%/*}
+      break
+    fi
+  done
 
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
 }
@@ -135,41 +267,56 @@ install_ca() {
   local src="$DIR/configuration/rootCA/rootCA.pem"
   local dest=/usr/local/share/ca-certificates/rootCA.crt
   [[ $EUID -eq 0 ]] || die "install certificate requires sudo"
-  [[ -r $src ]]     || die "certificate not found: $src"
+  [[ -r $src ]] || die "certificate not found: $src"
 
   printf "%sInstalling root CA…%s\n" "$CYAN" "$NC"
   install -m 644 "$src" "$dest"
   command -v update-ca-certificates &>/dev/null && update-ca-certificates
-  command -v trust &>/dev/null              && trust extract-compat
+  command -v trust &>/dev/null && trust extract-compat
   printf "%sRoot CA installed → %s%s\n" "$GREEN" "$dest" "$NC"
 }
 
 ###############################################################################
 # 6. COMMANDS
 ###############################################################################
-cmd_up()          { docker_compose up; }
-cmd_start()       { docker_compose up -d; http_reload; }
-cmd_reload()      { cmd_start; }
-cmd_stop()        { docker_compose down; }
-cmd_down()        { cmd_stop; }
-cmd_restart()     { cmd_stop; cmd_start; }
-cmd_reboot()      { cmd_restart; }
-cmd_rebuild()     { docker_compose down; docker_compose build --no-cache --pull "${@:2}"; }
-cmd_config()      { docker_compose config; }
-cmd_tools()       { docker exec -it SERVER_TOOLS bash; }
-cmd_lzd()         { docker exec -it SERVER_TOOLS lazydocker; }
-cmd_http()        { [[ $2 == reload ]] && http_reload; }
-cmd_core()        { [[ -n ${2:-} ]] || die "Usage: server core <domain>"; launch_php "$2"; }
+cmd_up() { docker_compose up; }
+cmd_start() {
+  docker_compose up -d
+  http_reload
+}
+cmd_reload() { cmd_start; }
+cmd_stop() { docker_compose down; }
+cmd_down() { cmd_stop; }
+cmd_restart() {
+  cmd_stop
+  cmd_start
+}
+cmd_reboot() { cmd_restart; }
+cmd_rebuild() {
+  docker_compose down
+  docker_compose build --no-cache --pull "${@:2}"
+}
+cmd_config() { docker_compose config; }
+cmd_tools() { docker exec -it SERVER_TOOLS bash; }
+cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
+cmd_http() { [[ $1 == reload ]] && http_reload; }
+cmd_core() {
+  local domain=${1:-}
+  [[ -n $domain ]] || die "Usage: server core <domain>"
+  launch_php "$domain"
+}
 
 cmd_setup() {
-  case ${2:-} in
-    permissions|perms|perm) fix_perms ;;
-    domain)                 setup_domain ;;
-    profiles|profile)       modify_profiles add "${@:3}" ;;
-    env)
-      local file=$ENV_MAIN; [[ $3 == docker ]] && file=$ENV_DOCKER
-      "${DIR}/bin/env-helper" "$file" ;;  # assuming external script
-    *) die "setup <permissions|domain|profiles|env>" ;;
+  case ${1:-} in
+  permission | permissions | perms | perm) fix_perms ;;
+  domain) setup_domain ;;
+  profiles | profile) process_all ;;
+  env)
+    local file=$ENV_MAIN
+    [[ $3 == docker ]] && file=$ENV_DOCKER
+    "${DIR}/bin/env-helper" "$file"
+    ;;
+  *) die "setup <permissions|domain|profiles|env>" ;;
   esac
 }
 
@@ -206,18 +353,23 @@ EOF
 # 7. MAIN
 ###############################################################################
 main() {
-  need docker; need readlink
-  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
+  need docker readlink,greadlink
+  ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
+  [[ $# -gt 0 ]] || {
+    cmd_help
+    exit 1
+  }
 
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
-  update_env "$ENV_DOCKER" USER        "$(id -un)"
+  update_env "$ENV_DOCKER" USER "$(id -un)"
 
-  case "$1" in
-    php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|redis|composer)
-      exec "$DIR/bin/$1" "${@:2}" ;;
+  case "${1,,}" in
+  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | redis | composer)
+    exec "$DIR/bin/$1" "${@:2}"
+    ;;
   esac
 
-  cmd_"${1,,}" "$@"
+  cmd_"${1,,}" "${@:2}"
 }
 
 main "$@"
