@@ -4,25 +4,6 @@
 
 set -euo pipefail
 
-#───────────────────────────────────────────────────────────────────────────────
-# 0. GLOBAL ERROR HANDLER
-#───────────────────────────────────────────────────────────────────────────────
-command_not_found_handle() {
-  local unknown="$1"
-  [[ $unknown == cmd_* ]] && unknown=${unknown#cmd_}
-  printf "\n%bError:%b Unknown command '%s'\n\n" "$RED" "$NC" "$unknown"
-  cmd_help
-  exit 1
-}
-
-# Your existing ERR trap (optional)
-trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
-on_error() {
-  printf "\n%bError:%b '%s' failed at line %d (exit %d)\n\n" \
-    "$RED" "$NC" "$3" "$2" "$1"
-  exit "$1"
-}
-
 ###############################################################################
 # 0. PATHS & CONSTANTS
 ###############################################################################
@@ -35,6 +16,26 @@ COLOR() { printf '\033[%sm' "$1"; }
 RED=$(COLOR '0;31') GREEN=$(COLOR '0;32') CYAN=$(COLOR '0;36')
 YELLOW=$(COLOR '1;33') NC=$(COLOR '0')
 source "$CFG/utilities/profiles"
+
+#───────────────────────────────────────────────────────────────────────────────
+# 0. GLOBAL ERROR HANDLER
+#───────────────────────────────────────────────────────────────────────────────
+command_not_found_handle() {
+  local unknown="$1"
+  [[ $unknown == cmd_* ]] && unknown=${unknown#cmd_}
+  printf "\n%bError:%b Unknown command '%b'\n\n" "$RED" "$NC" "$unknown"
+  cmd_help
+  exit 1
+}
+
+# Your existing ERR trap (optional)
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+on_error() {
+  printf "\n%bError:%b '%s' failed at line %d (exit %d)\n\n" \
+    "$RED" "$NC" "$3" "$2" "$1"
+  exit "$1"
+}
+
 ###############################################################################
 # 1. COMMON HELPERS
 ###############################################################################
@@ -111,7 +112,7 @@ update_env() { # update_env <file> <VAR> <value>
   local file=$1 var=$2 val=$3
   mkdir -p "$(dirname "$file")"
   [ ! -f "$file" ] && {
-    printf "%sFile '$file' not found. Creating one.%s\n" "$YELLOW" "$NC"
+    printf "%bFile '$file' not found. Creating one.%b\n" "$YELLOW" "$NC"
     touch "$file"
   }
   var=$(echo "$var" | sed 's/[]\/$*.^|[]/\\&/g')
@@ -121,14 +122,14 @@ update_env() { # update_env <file> <VAR> <value>
 }
 
 http_reload() {
-  printf "%sReloading HTTP…%s\n" "$GREEN" "$NC"
+  printf "%bReloading HTTP…%b\n" "$GREEN" "$NC"
   if docker ps -qf name=NGINX &>/dev/null; then
     docker exec NGINX nginx -s reload &>/dev/null || true
   fi
   if docker ps -qf name=APACHE &>/dev/null; then
     docker exec APACHE apachectl graceful &>/dev/null || true
   fi
-  printf "%sHTTP reloaded%s\n" "$GREEN" "$NC"
+  printf "%bHTTP reloaded%b\n" "$GREEN" "$NC"
 }
 
 ###############################################################################
@@ -169,7 +170,7 @@ fix_perms() {
   # ── Symlink        (force-update) ───────────────────────────────────────
   ln -fs "$DIR/server" /usr/local/bin/server
 
-  printf "%sPermissions assigned.%s\n" "$GREEN" "$NC"
+  printf "%bPermissions assigned.%b\n" "$GREEN" "$NC"
 }
 
 ###############################################################################
@@ -326,11 +327,11 @@ install_ca() {
   [[ $EUID -eq 0 ]] || die "install certificate requires sudo"
   [[ -r $src ]] || die "certificate not found: $src"
 
-  printf "%sInstalling root CA…%s\n" "$CYAN" "$NC"
+  printf "%bInstalling root CA…%b\n" "$CYAN" "$NC"
   install -m 644 "$src" "$dest"
   command -v update-ca-certificates &>/dev/null && update-ca-certificates
   command -v trust &>/dev/null && trust extract-compat
-  printf "%sRoot CA installed → %s%s\n" "$GREEN" "$dest" "$NC"
+  printf "%bRoot CA installed → %s%b\n" "$GREEN" "$dest" "$NC"
 }
 
 ###############################################################################
