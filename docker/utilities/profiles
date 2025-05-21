@@ -51,9 +51,9 @@ flush_envs() {
 }
 
 flush_profiles() {
-  local env_file="$DIR/docker/.env" profile
+  local profile
   for profile in "${PENDING_PROFILES[@]}"; do
-    modify_compose_profiles "$env_file" "COMPOSE_PROFILES" "add" "$profile"
+    modify_profiles add "$profile"
   done
 }
 
