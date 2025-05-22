@@ -14,8 +14,6 @@ x-php-service: &php-service
     - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
     - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
     - "../../configuration/ssh:/home/${USER}/.ssh:ro"
-  extra_hosts:
-    - "host.docker.internal:host-gateway"
   depends_on:
     - server-tools
   healthcheck:
