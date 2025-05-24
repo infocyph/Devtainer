@@ -534,7 +534,8 @@ int ServerCLI::run(int argc, char **argv) {
   if (script_passthrough(argc, argv)) return 0;
 
   std::string cmd = lower(argv[1]);
-  if (cmd == "up" || cmd == "start")         return compose({"up"});
+  if (cmd == "up")         return compose({"up"});
+  if (cmd == "start")         return compose({"up", "-d"});
   if (cmd == "stop" || cmd == "down")        return compose({"down"});
   if (cmd == "reload" || cmd == "restart")   return restart();
   if (cmd == "rebuild")                return compose(
