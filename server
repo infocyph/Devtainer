@@ -257,7 +257,7 @@ launch_php() {
       break
     fi
   done
-
+  php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
 }
 
