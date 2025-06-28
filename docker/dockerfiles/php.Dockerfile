@@ -22,4 +22,5 @@ RUN set -eux; apk update && apk add --no-cache bash
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-cli-setup.sh /usr/local/bin/cli-setup.sh
 RUN bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${PHP_VERSION}"
 USER ${USERNAME}
+RUN git config --global --add safe.directory '/app/*'
 WORKDIR /app
