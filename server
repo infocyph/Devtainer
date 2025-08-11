@@ -187,6 +187,7 @@ setup_domain() {
   [[ -n $php_prof ]] && modify_profiles add "$php_prof"
   [[ -n $svr_prof ]] && modify_profiles add "$svr_prof"
   mkhost --RESET
+  http_reload
 }
 
 # modify_profiles <add|remove> <profile1> [profile2…]
