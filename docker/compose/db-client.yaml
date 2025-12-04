@@ -21,25 +21,6 @@ services:
     volumes:
       - ../../data/redis-insight:/data
 
-  pgadmin4:
-    <<: *db-client-service
-    container_name: PGADMIN
-    hostname: pgadmin4
-    image: dpage/pgadmin4:latest
-    profiles:
-      - postgresql
-    depends_on:
-      - postgres
-    ports:
-      - "${PGADMIN_PORT:-5400}:80"
-    environment:
-      - TZ=${TZ:-}
-      - PGADMIN_DEFAULT_EMAIL=infocyph@localdock.admin
-      - PGADMIN_DEFAULT_PASSWORD=infocyph
-    volumes:
-      - ../../data/pgadmin:/var/lib/pgadmin
-      - ../../logs/pgadmin:/var/log/pgadmin
-
   cloudbeaver:
     <<: *db-client-service
     container_name: CLOUD_BEAVER
@@ -48,6 +29,7 @@ services:
     profiles:
       - mysql
       - mariadb
+      - postgresql
     ports:
       - "${DBEAVER_PORT:-8080}:8978"
     environment:

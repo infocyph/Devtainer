@@ -34,7 +34,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DATABASE:-postgres}
     volumes:
-      - ../../data/postgresql:/var/lib/postgresql/data
+      - ../../data/postgresql:/var/lib/postgresql
       - ../conf/pg_hba.conf:/etc/postgresql/pg_hba.conf
 #      - ../conf/postgresql.conf:/etc/postgresql/postgresql.conf
     command:
