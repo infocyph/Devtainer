@@ -155,6 +155,9 @@ fix_perms() {
 
   # ── data/          (dir=2777, first-level dirs=2777, files=666) ────────
   chmod 2777 "$DIR/data"
+  mkdir -p "$DIR/data/cloudbeaver" "$DIR/data/mysql" "$DIR/data/postgresql" "$DIR/data/mongo" \
+    "$DIR/data/mariadb" "$DIR/data/elasticsearch" "$DIR/data/redis" \
+    "$DIR/data/redis-insight" "$DIR/data/kibana"
   find "$DIR/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} +
   find "$DIR/data" -type f -exec chmod 666 {} +
 
