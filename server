@@ -432,8 +432,11 @@ main() {
   update_env "$ENV_DOCKER" USER "$(id -un)"
 
   case "${1,,}" in
-  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | redis | composer)
+  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
     exec "$DIR/bin/$1" "${@:2}"
+    ;;
+  redis | redis-cli)
+    exec "$DIR/bin/redis-cli" "${@:2}"
     ;;
   esac
 
