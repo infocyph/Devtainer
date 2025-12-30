@@ -376,6 +376,11 @@ cmd_setup() {
   profiles | profile) process_all ;;
   *) die "setup <permissions|domain|profiles>" ;;
   esac
+
+  update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
+  update_env "$ENV_DOCKER" USER "$(id -un)"
+  update_env "$ENV_DOCKER" UID "$(id -u)"
+  update_env "$ENV_DOCKER" GID "$(id -g)"
 }
 
 cmd_env() {
@@ -427,9 +432,6 @@ main() {
     cmd_help
     exit 1
   }
-
-  update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
-  update_env "$ENV_DOCKER" USER "$(id -un)"
 
   case "${1,,}" in
   php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
