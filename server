@@ -393,6 +393,62 @@ cmd_env() {
 
 cmd_install() { [[ $2 == certificate ]] && install_ca || die "install certificate"; }
 
+notify_watch() {
+  local container="${1:-SERVER_TOOLS}"
+  local prefix="__HOST_NOTIFY__"
+
+  need docker notify-send
+
+  # stdbuf may not exist everywhere; degrade gracefully
+  local grep_cmd=(grep --line-buffered "^${prefix}")
+  command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL grep --line-buffered "^${prefix}")
+
+  printf "%bNotify Watch:%b monitoring is active. Ctrl+C to stop.\n" "$GREEN" "$NC"
+
+  docker logs -f --tail 0 "$container" 2>&1 \
+    | "${grep_cmd[@]}" \
+    | while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
+    local timeout urgency title body
+
+    if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
+      timeout="$f1"
+      urgency="${f2:-normal}"
+      title="${f3:-Notification}"
+      body="${f4:-}"
+    else
+      timeout="2500"
+      urgency="${f1:-normal}"
+      title="${f2:-Notification}"
+      body="${f3:-}"
+    fi
+
+    [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
+    case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
+    notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
+  done
+}
+
+notify_test() {
+  local title="${1:-Notifier OK}"
+  local body="${2:-Hello from host via SERVER_TOOLS}"
+
+  docker exec SERVER_TOOLS notify -t 2500 -u normal "$title" "$body"
+}
+
+cmd_notify() {
+  case ${1:-watch} in
+  watch)
+    notify_watch "${2:-SERVER_TOOLS}"
+    ;;
+  test)
+    notify_test "${2:-Notifier OK}" "${3:-Hello from host}"
+    ;;
+  *)
+    die "notify <watch [container]|test \"Title\" \"Body\">"
+    ;;
+  esac
+}
+
 cmd_help() {
   cat <<EOF
 ${CYAN}Usage:${NC} server <command> [options]
@@ -418,7 +474,10 @@ ${CYAN}Env commands:${NC}
 
 ${CYAN}Misc:${NC}
   install certificate        Install local rootCA
+  notify watch [container]   Watch SERVER_TOOLS notifications and show desktop popups
+  notify test "T" "B"        Send a test notification into SERVER_TOOLS
   help                       This help
+
 EOF
 }
 

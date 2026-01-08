@@ -183,3 +183,26 @@ services:
     profiles:
       - php
       - php84
+
+  php85:
+    <<: *php-service
+    container_name: PHP_8.5
+    hostname: php-85
+    build:
+      context: ../dockerfiles
+      dockerfile: php.Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-root}
+        USERNAME: ${USER}
+        PHP_EXT: ${PHP_EXT:-}
+        LINUX_PKG: ${LINUX_PKG:-}
+        NODE_VERSION: ${NODE_VERSION:-}
+        WORKING_DIR: ${WORKING_DIR}
+        PHP_VERSION: 8.5
+        PHP_EXT_VERSIONED: ${PHP_EXT_85:-}
+        LINUX_PKG_VERSIONED: ${LINUX_PKG_85:-}
+        NODE_VERSION_VERSIONED: ${NODE_VERSION_85:-}
+    profiles:
+      - php
+      - php85
