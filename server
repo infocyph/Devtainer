@@ -356,8 +356,16 @@ cmd_restart() {
 cmd_reboot() { cmd_restart; }
 cmd_rebuild() {
   docker_compose down
-  docker_compose build --no-cache --pull "${@:2}"
+
+  local -a targets=()
+  local t
+  for t in "$@"; do
+    targets+=("$(normalize_service "$t")")
+  done
+
+  docker_compose build --no-cache --pull "${targets[@]}"
 }
+
 cmd_config() { docker_compose config; }
 cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
@@ -368,19 +376,49 @@ cmd_core() {
   [[ -n $domain ]] || die "Usage: server core <domain>"
   launch_php "$domain"
 }
+normalize_service() {
+  local s="${1:-}"
+  s="${s// /}"                 # trim spaces (basic)
+  s="${s^^}"                   # uppercase for pattern checks
 
+  # PHP_8.4  -> php84
+  if [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]]; then
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  # PHP_84 -> php84
+  if [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]]; then
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  # php-84 / php_84 / php84 / php8.4 (case-insensitive) -> php84
+  s="${1,,}"                   # back to lower
+  s="${s//_/}" ; s="${s//-/}"
+  if [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]]; then
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  if [[ "$s" =~ ^php([0-9]+)([0-9])$ ]]; then
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  # Fallback: return as-is (lowercased)
+  printf '%s' "${1,,}"
+}
 cmd_setup() {
+  update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
+  update_env "$ENV_DOCKER" USER "$(id -un)"
+  update_env "$ENV_DOCKER" UID "$(id -u)"
+  update_env "$ENV_DOCKER" GID "$(id -g)"
   case ${1:-} in
   permission | permissions | perms | perm) fix_perms ;;
   domain) setup_domain ;;
   profiles | profile) process_all ;;
   *) die "setup <permissions|domain|profiles>" ;;
   esac
-
-  update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
-  update_env "$ENV_DOCKER" USER "$(id -un)"
-  update_env "$ENV_DOCKER" UID "$(id -u)"
-  update_env "$ENV_DOCKER" GID "$(id -g)"
 }
 
 cmd_env() {
@@ -425,6 +463,7 @@ notify_watch() {
     [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
     case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
     notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
+    printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
   done
 }
 
