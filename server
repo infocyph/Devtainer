@@ -49,10 +49,7 @@ need() {
     IFS='|,' read -ra alts <<<"$group"
     found=0
     for cmd in "${alts[@]}"; do
-      command -v "$cmd" &>/dev/null && {
-        found=1
-        break
-      }
+      command -v "$cmd" &>/dev/null && { found=1; break; }
     done
     ((found)) && continue
     local miss=${alts[*]}
@@ -225,10 +222,7 @@ launch_php() {
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
   for suffix in public dist public_html; do
-    [[ $docroot == */$suffix ]] && {
-      docroot=${docroot%/*}
-      break
-    }
+    [[ $docroot == */$suffix ]] && { docroot=${docroot%/*}; break; }
   done
 
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
@@ -253,7 +247,9 @@ detect_timezone() {
     </etc/timezone
   elif command -v powershell.exe &>/dev/null; then
     powershell.exe -NoProfile -Command "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
-  else date +%Z; fi
+  else
+    date +%Z
+  fi
 }
 
 env_init() {
@@ -302,17 +298,11 @@ install_ca() {
 # 6. COMMANDS
 ###############################################################################
 cmd_up() { docker_compose up; }
-cmd_start() {
-  docker_compose up -d
-  http_reload
-}
+cmd_start() { docker_compose up -d; http_reload; }
 cmd_reload() { cmd_start; }
 cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
-cmd_restart() {
-  cmd_stop
-  cmd_start
-}
+cmd_restart() { cmd_stop; cmd_start; }
 cmd_reboot() { cmd_restart; }
 
 normalize_service() {
@@ -320,26 +310,13 @@ normalize_service() {
   s="${s// /}"
   s="${s^^}"
 
-  [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]] && {
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  }
-  [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]] && {
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  }
+  [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
+  [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
 
   s="${1,,}"
-  s="${s//_/}"
-  s="${s//-/}"
-  [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]] && {
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  }
-  [[ "$s" =~ ^php([0-9]+)([0-9])$ ]] && {
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  }
+  s="${s//_/}"; s="${s//-/}"
+  [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
+  [[ "$s" =~ ^php([0-9]+)([0-9])$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
 
   printf '%s' "${1,,}"
 }
@@ -357,11 +334,7 @@ cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
-cmd_core() {
-  local domain=${1:-}
-  [[ -n $domain ]] || die "Usage: server core <domain>"
-  launch_php "$domain"
-}
+cmd_core() { local domain=${1:-}; [[ -n $domain ]] || die "Usage: server core <domain>"; launch_php "$domain"; }
 
 cmd_setup() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
@@ -369,16 +342,16 @@ cmd_setup() {
   update_env "$ENV_DOCKER" UID "$(id -u)"
   update_env "$ENV_DOCKER" GID "$(id -g)"
   case ${1:-} in
-  permission | permissions | perms | perm) fix_perms ;;
+  permission|permissions|perms|perm) fix_perms ;;
   domain) setup_domain ;;
-  profiles | profile) process_all ;;
+  profiles|profile) process_all ;;
   *) die "setup <permissions|domain|profiles>" ;;
   esac
 }
 
 cmd_env() {
   case ${1:-} in
-  init | boot) env_init ;;
+  init|boot) env_init ;;
   edit) die "ToDo" ;;
   *) die "env <init|edit>" ;;
   esac
@@ -395,37 +368,48 @@ notify_watch() {
 
   need docker notify-send
 
-  # isolate watcher from global traps/settings
+  # ── watcher must not die because of pipefail / set -e ──────────────────
   trap - ERR
+  set +e
+  set +o pipefail
 
   # Snapshot GUI env for detached notify calls (set -u safe)
   local _disp="${DISPLAY-}"
   local _dbus="${DBUS_SESSION_BUS_ADDRESS-}"
 
+  local _stop=0
+
   _watcher_notify() {
     local urgency="${1:-critical}" title="${2:-Notifier}" body="${3:-Watcher event}"
-    (env DISPLAY="${_disp:-}" DBUS_SESSION_BUS_ADDRESS="${_dbus:-}" \
+    ( env DISPLAY="${_disp-}" DBUS_SESSION_BUS_ADDRESS="${_dbus-}" \
       setsid -f notify-send -u "$urgency" -t 2500 "$title" "$body" \
-      >/dev/null 2>&1 || true) &
+      >/dev/null 2>&1 || true ) &
   }
 
   _watcher_int_term() {
-    trap - INT TERM
+    _stop=1
     _watcher_notify critical "Notifier" "Notification watcher interrupted/exiting"
     printf "%b[watcher]%b Notification watcher interrupted/exiting\n" "$RED" "$NC" >&2
-    exit 130
   }
-
   trap _watcher_int_term INT TERM
 
-  local grep_cmd=(grep --line-buffered "^${prefix}")
-  command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL grep --line-buffered "^${prefix}")
+  # grep should never be the reason we exit
+  local grep_cmd=(grep -a --line-buffered -E "^${prefix}([[:space:]]|$)")
+  command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL -eL "${grep_cmd[@]}")
 
   printf "%bNotify Watch:%b monitoring is active. Ctrl+C to stop.\n" "$GREEN" "$NC"
 
-  if ! docker logs -f --tail 0 "$container" 2>&1 |
-    ("${grep_cmd[@]}" || true) |
-    while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
+  while (( _stop == 0 )); do
+    # If container truly isn't running, notify and stop.
+    if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q true; then
+      _watcher_notify critical "Notifier" "Watcher stopped: $container is not running"
+      printf "%b[watcher]%b %s is not running; exiting.\n" "$RED" "$NC" "$container" >&2
+      break
+    fi
+
+    docker logs -f --tail 0 "$container" 2>&1 \
+      | ( "${grep_cmd[@]}" || true ) \
+      | while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
       local timeout urgency title body
 
       if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
@@ -440,16 +424,36 @@ notify_watch() {
         body="${f3:-}"
       fi
 
-      [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
-      case "$urgency" in low | normal | critical) ;; *) urgency="normal" ;; esac
+      [[ -n "${rest:-}" ]] && body+=$'\t'"${rest}"
+      case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
 
       notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
       printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
-    done; then
-    _watcher_notify critical "Notifier" "Notification watcher stopped (docker logs ended/error)"
-    printf "%b[watcher]%b Notification watcher stopped (docker logs ended/error)\n" "$RED" "$NC" >&2
-    return 1
-  fi
+    done
+
+    (( _stop )) && break
+
+    # log stream ended; decide whether to reconnect
+    if docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q true; then
+      _watcher_notify critical "Notifier" "Watcher lost log stream (docker logs ended). Reconnecting…"
+      printf "%b[watcher]%b docker logs ended; reconnecting...\n" "$YELLOW" "$NC" >&2
+      sleep 1
+      continue
+    fi
+
+    _watcher_notify critical "Notifier" "Watcher stopped: $container stopped"
+    printf "%b[watcher]%b %s stopped; exiting.\n" "$RED" "$NC" "$container" >&2
+    break
+  done
+
+  trap - INT TERM
+
+  # restore strict mode for rest of script
+  set -euo pipefail
+
+  # match typical Ctrl+C code if interrupted
+  (( _stop )) && return 130
+  return 0
 }
 
 notify_test() {
@@ -461,7 +465,7 @@ notify_test() {
 cmd_notify() {
   case ${1:-watch} in
   watch) notify_watch "${2:-SERVER_TOOLS}" ;;
-  test) notify_test "${2:-Notifier OK}" "${3:-Hello from host}" ;;
+  test)  notify_test "${2:-Notifier OK}" "${3:-Hello from host}" ;;
   *) die "notify <watch [container]|test \"Title\" \"Body\">" ;;
   esac
 }
@@ -503,16 +507,13 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
-  [[ $# -gt 0 ]] || {
-    cmd_help
-    exit 1
-  }
+  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
 
   case "${1,,}" in
-  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
+  php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|composer)
     exec "$DIR/bin/$1" "${@:2}"
     ;;
-  redis | redis-cli)
+  redis|redis-cli)
     exec "$DIR/bin/redis-cli" "${@:2}"
     ;;
   esac
