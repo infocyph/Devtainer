@@ -28,7 +28,6 @@ command_not_found_handle() {
   exit 1
 }
 
-# Your existing ERR trap (optional)
 trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 on_error() {
   printf "\n%bError:%b '%s' failed at line %d (exit %d)\n\n" \
@@ -46,9 +45,8 @@ die() {
 
 need() {
   local group found cmd
-
   for group in "$@"; do
-    IFS='|,' read -ra alts <<<"$group" # split on ‘|’ or ‘,’
+    IFS='|,' read -ra alts <<<"$group"
     found=0
     for cmd in "${alts[@]}"; do
       command -v "$cmd" &>/dev/null && {
@@ -57,8 +55,6 @@ need() {
       }
     done
     ((found)) && continue
-
-    # compose “foo or bar or baz” for the error
     local miss=${alts[*]}
     miss=${miss// / or }
     die "Missing command(s): $miss"
@@ -67,35 +63,29 @@ need() {
 
 ensure_files_exist() {
   local rel abs dir
-
   for rel in "$@"; do
-    abs="${DIR}${rel}" # absolute path inside project
-    dir="${abs%/*}"    # fast dirname
+    abs="${DIR}${rel}"
+    dir="${abs%/*}"
 
-    # ── Directory checks ─────────────────────────────────────────────
     if [[ ! -d $dir ]]; then
       if mkdir -p "$dir" 2>/dev/null; then
         printf "%b- Created directory %s%b\n" "$YELLOW" "$dir" "$NC"
       else
         printf "%b- Warning:%b cannot create directory %s (permissions?)\n" \
           "$YELLOW" "$NC" "$dir"
-        continue # skip file creation; go next path
+        continue
       fi
     elif [[ ! -w $dir ]]; then
-      printf "%b- Warning:%b directory not writable: %s\n" \
-        "$YELLOW" "$NC" "$dir"
+      printf "%b- Warning:%b directory not writable: %s\n" "$YELLOW" "$NC" "$dir"
     fi
 
-    # ── File checks ──────────────────────────────────────────────────
     if [[ -e $abs ]]; then
-      [[ -w $abs ]] || printf "%b- Warning:%b file not writable: %s\n" \
-        "$YELLOW" "$NC" "$abs"
+      [[ -w $abs ]] || printf "%b- Warning:%b file not writable: %s\n" "$YELLOW" "$NC" "$abs"
     else
       if : >"$abs" 2>/dev/null; then
         printf "%b- Created file %s%b\n" "$YELLOW" "$abs" "$NC"
       else
-        printf "%b- Error:%b cannot create file %s (permissions?)\n" \
-          "$RED" "$NC" "$abs"
+        printf "%b- Error:%b cannot create file %s (permissions?)\n" "$RED" "$NC" "$abs"
       fi
     fi
   done
@@ -108,12 +98,12 @@ docker_compose() {
     --env-file "$ENV_DOCKER" "$@"
 }
 
-update_env() { # update_env <file> <VAR> <value>
+update_env() {
   local file=$1 var=$2 val=$3
   mkdir -p "$(dirname "$file")"
-  [ ! -f "$file" ] && {
+  [[ -f "$file" ]] || {
     printf "%bFile '$file' not found. Creating one.%b\n" "$YELLOW" "$NC"
-    touch "$file"
+    : >"$file"
   }
   var=$(echo "$var" | sed 's/[]\/$*.^|[]/\\&/g')
   grep -qE "^[# ]*$var=" "$file" 2>/dev/null &&
@@ -123,12 +113,8 @@ update_env() { # update_env <file> <VAR> <value>
 
 http_reload() {
   printf "%bReloading HTTP…%b\n" "$GREEN" "$NC"
-  if docker ps -qf name=NGINX &>/dev/null; then
-    docker exec NGINX nginx -s reload &>/dev/null || true
-  fi
-  if docker ps -qf name=APACHE &>/dev/null; then
-    docker exec APACHE apachectl graceful &>/dev/null || true
-  fi
+  docker ps -qf name=NGINX &>/dev/null && docker exec NGINX nginx -s reload &>/dev/null || true
+  docker ps -qf name=APACHE &>/dev/null && docker exec APACHE apachectl graceful &>/dev/null || true
   printf "%bHTTP reloaded%b\n" "$GREEN" "$NC"
 }
 
@@ -235,11 +221,16 @@ launch_php() {
     docroot=$(grep -m1 -Eo 'DocumentRoot [^ ]+' "$aconf" | awk '{print $2}')
     php=$(grep -Eo 'proxy:fcgi://([^:]+):9000' "$aconf" | sed 's/.*:\/\/\([^:]*\):.*/\1/')
   fi
+
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
   for suffix in public dist public_html; do
-    [[ $docroot == */$suffix ]] && { docroot=${docroot%/*}; break; }
+    [[ $docroot == */$suffix ]] && {
+      docroot=${docroot%/*}
+      break
+    }
   done
+
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
 }
@@ -247,13 +238,21 @@ launch_php() {
 ###############################################################################
 # 5. ENV + CERT
 ###############################################################################
-read_default() { local prompt=$1 default=$2 input; read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input; printf '%s' "${input:-$default}"; }
+read_default() {
+  local prompt=$1 default=$2 input
+  read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input
+  printf '%s' "${input:-$default}"
+}
 
 detect_timezone() {
-  if command -v timedatectl &>/dev/null; then timedatectl show -p Timezone --value
-  elif [[ -n ${TZ-} ]]; then printf '%s' "$TZ"
-  elif [[ -r /etc/timezone ]]; then </etc/timezone
-  elif command -v powershell.exe &>/dev/null; then powershell.exe -NoProfile -Command "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
+  if command -v timedatectl &>/dev/null; then
+    timedatectl show -p Timezone --value
+  elif [[ -n ${TZ-} ]]; then
+    printf '%s' "$TZ"
+  elif [[ -r /etc/timezone ]]; then
+    </etc/timezone
+  elif command -v powershell.exe &>/dev/null; then
+    powershell.exe -NoProfile -Command "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
   else date +%Z; fi
 }
 
@@ -269,9 +268,11 @@ env_init() {
   default_user=${USER:-$(id -un)}
   user=$(read_default "User" "$default_user")
   if id "$user" &>/dev/null; then
-    default_uid=$(id -u "$user"); default_gid=$(id -g "$user")
+    default_uid=$(id -u "$user")
+    default_gid=$(id -g "$user")
   else
-    default_uid=$(id -u); default_gid=$(id -g)
+    default_uid=$(id -u)
+    default_gid=$(id -g)
   fi
   uid=$(read_default "User UID" "$default_uid")
   gid=$(read_default "User GID" "$default_gid")
@@ -301,11 +302,17 @@ install_ca() {
 # 6. COMMANDS
 ###############################################################################
 cmd_up() { docker_compose up; }
-cmd_start() { docker_compose up -d; http_reload; }
+cmd_start() {
+  docker_compose up -d
+  http_reload
+}
 cmd_reload() { cmd_start; }
 cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
-cmd_restart() { cmd_stop; cmd_start; }
+cmd_restart() {
+  cmd_stop
+  cmd_start
+}
 cmd_reboot() { cmd_restart; }
 
 normalize_service() {
@@ -313,13 +320,26 @@ normalize_service() {
   s="${s// /}"
   s="${s^^}"
 
-  if [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
-  if [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+  [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]] && {
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  }
+  [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]] && {
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  }
 
   s="${1,,}"
-  s="${s//_/}"; s="${s//-/}"
-  if [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
-  if [[ "$s" =~ ^php([0-9]+)([0-9])$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+  s="${s//_/}"
+  s="${s//-/}"
+  [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]] && {
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  }
+  [[ "$s" =~ ^php([0-9]+)([0-9])$ ]] && {
+    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  }
 
   printf '%s' "${1,,}"
 }
@@ -328,9 +348,7 @@ cmd_rebuild() {
   docker_compose down
   local -a targets=()
   local t
-  for t in "$@"; do
-    targets+=("$(normalize_service "$t")")
-  done
+  for t in "$@"; do targets+=("$(normalize_service "$t")"); done
   docker_compose build --no-cache --pull "${targets[@]}"
 }
 
@@ -339,7 +357,11 @@ cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
-cmd_core() { local domain=${1:-}; [[ -n $domain ]] || die "Usage: server core <domain>"; launch_php "$domain"; }
+cmd_core() {
+  local domain=${1:-}
+  [[ -n $domain ]] || die "Usage: server core <domain>"
+  launch_php "$domain"
+}
 
 cmd_setup() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
@@ -356,7 +378,7 @@ cmd_setup() {
 
 cmd_env() {
   case ${1:-} in
-  init|boot) env_init ;;
+  init | boot) env_init ;;
   edit) die "ToDo" ;;
   *) die "env <init|edit>" ;;
   esac
@@ -373,52 +395,61 @@ notify_watch() {
 
   need docker notify-send
 
-  # Disable global ERR trap inside watcher
+  # isolate watcher from global traps/settings
   trap - ERR
 
-  # Snapshot GUI env for detached notify calls
+  # Snapshot GUI env for detached notify calls (set -u safe)
   local _disp="${DISPLAY-}"
   local _dbus="${DBUS_SESSION_BUS_ADDRESS-}"
 
-  _watcher_exit() {
-    trap - INT TERM EXIT
-    ( env DISPLAY="$_disp" DBUS_SESSION_BUS_ADDRESS="$_dbus" \
-      setsid -f notify-send -u critical -t 2500 "Notifier" "Notification watcher interrupted/exiting" \
-      >/dev/null 2>&1 || true ) &
+  _watcher_notify() {
+    local urgency="${1:-critical}" title="${2:-Notifier}" body="${3:-Watcher event}"
+    (env DISPLAY="${_disp:-}" DBUS_SESSION_BUS_ADDRESS="${_dbus:-}" \
+      setsid -f notify-send -u "$urgency" -t 2500 "$title" "$body" \
+      >/dev/null 2>&1 || true) &
+  }
+
+  _watcher_int_term() {
+    trap - INT TERM
+    _watcher_notify critical "Notifier" "Notification watcher interrupted/exiting"
     printf "%b[watcher]%b Notification watcher interrupted/exiting\n" "$RED" "$NC" >&2
     exit 130
   }
 
-  trap _watcher_exit INT TERM EXIT
+  trap _watcher_int_term INT TERM
 
   local grep_cmd=(grep --line-buffered "^${prefix}")
   command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL grep --line-buffered "^${prefix}")
 
   printf "%bNotify Watch:%b monitoring is active. Ctrl+C to stop.\n" "$GREEN" "$NC"
 
-  docker logs -f --tail 0 "$container" 2>&1 \
-    | ( "${grep_cmd[@]}" || true ) \
-    | while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
-    local timeout urgency title body
+  if ! docker logs -f --tail 0 "$container" 2>&1 |
+    ("${grep_cmd[@]}" || true) |
+    while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
+      local timeout urgency title body
 
-    if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
-      timeout="$f1"
-      urgency="${f2:-normal}"
-      title="${f3:-Notification}"
-      body="${f4:-}"
-    else
-      timeout="2500"
-      urgency="${f1:-normal}"
-      title="${f2:-Notification}"
-      body="${f3:-}"
-    fi
+      if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
+        timeout="$f1"
+        urgency="${f2:-normal}"
+        title="${f3:-Notification}"
+        body="${f4:-}"
+      else
+        timeout="2500"
+        urgency="${f1:-normal}"
+        title="${f2:-Notification}"
+        body="${f3:-}"
+      fi
 
-    [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
-    case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
+      [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
+      case "$urgency" in low | normal | critical) ;; *) urgency="normal" ;; esac
 
-    notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
-    printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
-  done
+      notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
+      printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
+    done; then
+    _watcher_notify critical "Notifier" "Notification watcher stopped (docker logs ended/error)"
+    printf "%b[watcher]%b Notification watcher stopped (docker logs ended/error)\n" "$RED" "$NC" >&2
+    return 1
+  fi
 }
 
 notify_test() {
@@ -456,7 +487,7 @@ ${CYAN}Setup commands:${NC}
   setup profiles             Setup database profiles
 
 ${CYAN}Env commands:${NC}
-  env init|boot               Setup Initial level environment variables (TZ, USER, UID, GID)
+  env init|boot              Setup Initial level environment variables (TZ, USER, UID, GID)
 
 ${CYAN}Misc:${NC}
   install certificate        Install local rootCA
@@ -472,7 +503,10 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
-  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
+  [[ $# -gt 0 ]] || {
+    cmd_help
+    exit 1
+  }
 
   case "${1,,}" in
   php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
