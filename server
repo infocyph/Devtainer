@@ -136,24 +136,16 @@ http_reload() {
 # 2. PERMISSIONS FIX-UP
 ###############################################################################
 fix_perms() {
-  # ── Skip on Windows/MSYS/Cygwin ─────────────────────────────────────────
   [[ "$OSTYPE" =~ (msys|cygwin) ]] && return
-
-  # ── Must be root ────────────────────────────────────────────────────────
   ((EUID == 0)) || die "Please run with sudo."
 
-  # ── Project root ───────────────────────────────────────────────────────
   chmod 755 "$DIR"
-
-  # ── configuration/ (dir=775+setgid → 2775, files=664) ────────────────────
   chmod 2775 "$DIR/configuration"
   find "$DIR/configuration" -type f ! -perm 664 -exec chmod 664 {} +
 
-  # ── docker/        (dir=755, files=644) ────────────────────────────────
   chmod 755 "$DIR/docker"
   find "$DIR/docker" -type f ! -perm 644 -exec chmod 644 {} +
 
-  # ── data/          (dir=2777, first-level dirs=2777, files=666) ────────
   chmod 2777 "$DIR/data"
   mkdir -p "$DIR/data/cloudbeaver" "$DIR/data/mysql" "$DIR/data/postgresql" "$DIR/data/mongo" \
     "$DIR/data/mariadb" "$DIR/data/elasticsearch" "$DIR/data/redis" \
@@ -161,23 +153,19 @@ fix_perms() {
   find "$DIR/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} +
   find "$DIR/data" -type f -exec chmod 666 {} +
 
-  # ── logs/          (recursive 777 + chown host-user:docker) ───────────
   chmod -R 777 "$DIR/logs"
   chown -R "$USER:docker" "$DIR/logs"
 
-  # ── bin/           (dir=755, files=744 except .bat) ────────────────────
   chmod 755 "$DIR/bin"
   find "$DIR/bin" -type f ! -name '*.bat' -exec chmod 744 {} +
   chmod 744 "$DIR/server"
 
-  # ── Symlink        (force-update) ───────────────────────────────────────
   ln -fs "$DIR/server" /usr/local/bin/server
-
   printf "%bPermissions assigned.%b\n" "$GREEN" "$NC"
 }
 
 ###############################################################################
-# 3. DOMAIN & PROFILE UTILITIES (unchanged behaviour)
+# 3. DOMAIN & PROFILE UTILITIES
 ###############################################################################
 mkhost() { docker exec SERVER_TOOLS mkhost "$@"; }
 
@@ -193,14 +181,12 @@ setup_domain() {
   http_reload
 }
 
-# modify_profiles <add|remove> <profile1> [profile2…]
 modify_profiles() {
   local action=$1
   shift
   local file=$ENV_DOCKER var=COMPOSE_PROFILES
   local -a existing updated
 
-  # ── Load existing profiles (only the last COMPOSE_PROFILES= line) ──────
   if [[ -r $file ]]; then
     local line value
     line=$(grep -E "^${var}=" "$file" | tail -n1 || true)
@@ -208,7 +194,6 @@ modify_profiles() {
     IFS=',' read -r -a existing <<<"$value"
   fi
 
-  # ── Compute updated list ───────────────────────────────────────────────
   case $action in
   add)
     local p
@@ -223,12 +208,9 @@ modify_profiles() {
       [[ ! " $* " =~ " $old " ]] && updated+=("$old")
     done
     ;;
-  *)
-    die "modify_profiles: invalid action '$action'"
-    ;;
+  *) die "modify_profiles: invalid action '$action'" ;;
   esac
 
-  # ── Write it back as a comma-separated value ───────────────────────────
   update_env "$file" "$var" "$(
     IFS=,
     echo "${updated[*]}"
@@ -236,7 +218,7 @@ modify_profiles() {
 }
 
 ###############################################################################
-# 4. LAUNCH PHP CONTAINER INSIDE DOCROOT (unchanged behaviour)
+# 4. LAUNCH PHP CONTAINER INSIDE DOCROOT
 ###############################################################################
 launch_php() {
   local domain=$1 suffix
@@ -256,75 +238,52 @@ launch_php() {
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
   for suffix in public dist public_html; do
-    if [[ $docroot == */$suffix ]]; then
-      docroot=${docroot%/*}
-      break
-    fi
+    [[ $docroot == */$suffix ]] && { docroot=${docroot%/*}; break; }
   done
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENV
-# ─────────────────────────────────────────────────────────────────────────────
-read_default() {
-  local prompt=$1 default=$2 input
-  read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input
-  printf '%s' "${input:-$default}"
-}
+###############################################################################
+# 5. ENV + CERT
+###############################################################################
+read_default() { local prompt=$1 default=$2 input; read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input; printf '%s' "${input:-$default}"; }
+
 detect_timezone() {
-  if command -v timedatectl &>/dev/null; then
-    timedatectl show -p Timezone --value
-  elif [[ -n ${TZ-} ]]; then
-    printf '%s' "$TZ"
-  elif [[ -r /etc/timezone ]]; then
-    </etc/timezone
-  elif command -v powershell.exe &>/dev/null; then
-    powershell.exe -NoProfile -Command \
-      "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
-  else
-    date +%Z
-  fi
+  if command -v timedatectl &>/dev/null; then timedatectl show -p Timezone --value
+  elif [[ -n ${TZ-} ]]; then printf '%s' "$TZ"
+  elif [[ -r /etc/timezone ]]; then </etc/timezone
+  elif command -v powershell.exe &>/dev/null; then powershell.exe -NoProfile -Command "[System.TimeZoneInfo]::Local.Id" 2>/dev/null | tr -d '\r'
+  else date +%Z; fi
 }
+
 env_init() {
   local env_file="$DIR/docker/.env"
   printf "%bBootstrapping environment defaults…%b\n" "$YELLOW" "$NC"
 
-  # Timezone
   local default_tz tz
   default_tz=$(detect_timezone)
   tz=$(read_default "Timezone (TZ)" "$default_tz")
 
-  # User / UID / GID
   local default_user user default_uid default_gid uid gid
   default_user=${USER:-$(id -un)}
   user=$(read_default "User" "$default_user")
   if id "$user" &>/dev/null; then
-    default_uid=$(id -u "$user")
-    default_gid=$(id -g "$user")
+    default_uid=$(id -u "$user"); default_gid=$(id -g "$user")
   else
     default_uid=$(id -u); default_gid=$(id -g)
   fi
   uid=$(read_default "User UID" "$default_uid")
   gid=$(read_default "User GID" "$default_gid")
 
-  # Write them out
   local kv key val
-  for kv in \
-    "TZ=$tz" \
-    "USER=$user" \
-    "UID=$uid" \
-    "GID=$gid"
-  do
+  for kv in "TZ=$tz" "USER=$user" "UID=$uid" "GID=$gid"; do
     IFS='=' read -r key val <<<"$kv"
     update_env "$env_file" "$key" "$val"
   done
   printf "%bDefaults saved!%b\n" "$GREEN" "$NC"
 }
-###############################################################################
-# 5. ROOT-CA INSTALL
-###############################################################################
+
 install_ca() {
   local src="$DIR/configuration/rootCA/rootCA.pem"
   local dest=/usr/local/share/ca-certificates/rootCA.crt
@@ -342,72 +301,46 @@ install_ca() {
 # 6. COMMANDS
 ###############################################################################
 cmd_up() { docker_compose up; }
-cmd_start() {
-  docker_compose up -d
-  http_reload
-}
+cmd_start() { docker_compose up -d; http_reload; }
 cmd_reload() { cmd_start; }
 cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
-cmd_restart() {
-  cmd_stop
-  cmd_start
-}
+cmd_restart() { cmd_stop; cmd_start; }
 cmd_reboot() { cmd_restart; }
+
+normalize_service() {
+  local s="${1:-}"
+  s="${s// /}"
+  s="${s^^}"
+
+  if [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+  if [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+
+  s="${1,,}"
+  s="${s//_/}"; s="${s//-/}"
+  if [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+  if [[ "$s" =~ ^php([0-9]+)([0-9])$ ]]; then printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; fi
+
+  printf '%s' "${1,,}"
+}
+
 cmd_rebuild() {
   docker_compose down
-
   local -a targets=()
   local t
   for t in "$@"; do
     targets+=("$(normalize_service "$t")")
   done
-
   docker_compose build --no-cache --pull "${targets[@]}"
 }
 
 cmd_config() { docker_compose config; }
 cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
-cmd_http() { [[ $1 == reload ]] && http_reload; }
+cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
-cmd_core() {
-  local domain=${1:-}
-  [[ -n $domain ]] || die "Usage: server core <domain>"
-  launch_php "$domain"
-}
-normalize_service() {
-  local s="${1:-}"
-  s="${s// /}"                 # trim spaces (basic)
-  s="${s^^}"                   # uppercase for pattern checks
+cmd_core() { local domain=${1:-}; [[ -n $domain ]] || die "Usage: server core <domain>"; launch_php "$domain"; }
 
-  # PHP_8.4  -> php84
-  if [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]]; then
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  fi
-
-  # PHP_84 -> php84
-  if [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]]; then
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  fi
-
-  # php-84 / php_84 / php84 / php8.4 (case-insensitive) -> php84
-  s="${1,,}"                   # back to lower
-  s="${s//_/}" ; s="${s//-/}"
-  if [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]]; then
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  fi
-  if [[ "$s" =~ ^php([0-9]+)([0-9])$ ]]; then
-    printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    return 0
-  fi
-
-  # Fallback: return as-is (lowercased)
-  printf '%s' "${1,,}"
-}
 cmd_setup() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
   update_env "$ENV_DOCKER" USER "$(id -un)"
@@ -429,22 +362,42 @@ cmd_env() {
   esac
 }
 
-cmd_install() { [[ $2 == certificate ]] && install_ca || die "install certificate"; }
+cmd_install() { [[ ${2:-} == certificate ]] && install_ca || die "install certificate"; }
 
+###############################################################################
+# NOTIFY
+###############################################################################
 notify_watch() {
   local container="${1:-SERVER_TOOLS}"
   local prefix="__HOST_NOTIFY__"
 
   need docker notify-send
 
-  # stdbuf may not exist everywhere; degrade gracefully
+  # Disable global ERR trap inside watcher
+  trap - ERR
+
+  # Snapshot GUI env for detached notify calls
+  local _disp="${DISPLAY-}"
+  local _dbus="${DBUS_SESSION_BUS_ADDRESS-}"
+
+  _watcher_exit() {
+    trap - INT TERM EXIT
+    ( env DISPLAY="$_disp" DBUS_SESSION_BUS_ADDRESS="$_dbus" \
+      setsid -f notify-send -u critical -t 2500 "Notifier" "Notification watcher interrupted/exiting" \
+      >/dev/null 2>&1 || true ) &
+    printf "%b[watcher]%b Notification watcher interrupted/exiting\n" "$RED" "$NC" >&2
+    exit 130
+  }
+
+  trap _watcher_exit INT TERM EXIT
+
   local grep_cmd=(grep --line-buffered "^${prefix}")
   command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL grep --line-buffered "^${prefix}")
 
   printf "%bNotify Watch:%b monitoring is active. Ctrl+C to stop.\n" "$GREEN" "$NC"
 
   docker logs -f --tail 0 "$container" 2>&1 \
-    | "${grep_cmd[@]}" \
+    | ( "${grep_cmd[@]}" || true ) \
     | while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
     local timeout urgency title body
 
@@ -462,6 +415,7 @@ notify_watch() {
 
     [[ -n "${rest:-}" ]] && body="${body}"$'\t'"${rest}"
     case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
+
     notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
     printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
   done
@@ -470,21 +424,14 @@ notify_watch() {
 notify_test() {
   local title="${1:-Notifier OK}"
   local body="${2:-Hello from host via SERVER_TOOLS}"
-
   docker exec SERVER_TOOLS notify -t 2500 -u normal "$title" "$body"
 }
 
 cmd_notify() {
   case ${1:-watch} in
-  watch)
-    notify_watch "${2:-SERVER_TOOLS}"
-    ;;
-  test)
-    notify_test "${2:-Notifier OK}" "${3:-Hello from host}"
-    ;;
-  *)
-    die "notify <watch [container]|test \"Title\" \"Body\">"
-    ;;
+  watch) notify_watch "${2:-SERVER_TOOLS}" ;;
+  test) notify_test "${2:-Notifier OK}" "${3:-Hello from host}" ;;
+  *) die "notify <watch [container]|test \"Title\" \"Body\">" ;;
   esac
 }
 
@@ -516,7 +463,6 @@ ${CYAN}Misc:${NC}
   notify watch [container]   Watch SERVER_TOOLS notifications and show desktop popups
   notify test "T" "B"        Send a test notification into SERVER_TOOLS
   help                       This help
-
 EOF
 }
 
@@ -526,10 +472,7 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
-  [[ $# -gt 0 ]] || {
-    cmd_help
-    exit 1
-  }
+  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
 
   case "${1,,}" in
   php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
