@@ -634,19 +634,14 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
-  [[ $# -gt 0 ]] || {
-    cmd_help
-    exit 1
-  }
-
-  # global flags: quiet by default; -v enables verbose
+  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    -v | --verbose)
+    -v|--verbose)
       VERBOSE=1
       shift
       ;;
-    -q | --quiet)
+    -q|--quiet)
       VERBOSE=0
       shift
       ;;
@@ -654,24 +649,23 @@ main() {
       shift
       break
       ;;
-    *) break ;;
+    -*)
+      die "Unknown global option: $1"
+      ;;
+    *)
+      break
+      ;;
     esac
   done
-
-  [[ $# -gt 0 ]] || {
-    cmd_help
-    exit 1
-  }
-
+  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
   case "${1,,}" in
-  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
+  php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|composer)
     exec "$DIR/bin/$1" "${@:2}"
     ;;
-  redis | redis-cli)
+  redis|redis-cli)
     exec "$DIR/bin/redis-cli" "${@:2}"
     ;;
   esac
-
   cmd_"${1,,}" "${@:2}"
 }
 
