@@ -12,9 +12,15 @@ CFG="$DIR/docker"
 ENV_MAIN="$DIR/.env"
 ENV_DOCKER="$CFG/.env"
 COMPOSE_FILE="$CFG/compose/main.yaml"
+
 COLOR() { printf '\033[%sm' "$1"; }
 RED=$(COLOR '0;31') GREEN=$(COLOR '0;32') CYAN=$(COLOR '0;36')
 YELLOW=$(COLOR '1;33') NC=$(COLOR '0')
+
+# Default behavior: QUIET
+VERBOSE=0
+
+# shellcheck source=/dev/null
 source "$CFG/utilities/profiles"
 
 #───────────────────────────────────────────────────────────────────────────────
@@ -49,7 +55,10 @@ need() {
     IFS='|,' read -ra alts <<<"$group"
     found=0
     for cmd in "${alts[@]}"; do
-      command -v "$cmd" &>/dev/null && { found=1; break; }
+      command -v "$cmd" &>/dev/null && {
+        found=1
+        break
+      }
     done
     ((found)) && continue
     local miss=${alts[*]}
@@ -95,11 +104,40 @@ docker_compose() {
     --env-file "$ENV_DOCKER" "$@"
 }
 
+# ── docker compose wrappers (QUIET by default) ────────────────────────────────
+dc_up() {
+  if ((VERBOSE)); then
+    docker_compose up "$@"
+  else
+    docker_compose up --quiet-pull "$@"
+  fi
+}
+
+dc_pull() {
+  if ((VERBOSE)); then
+    docker_compose pull "$@"
+  else
+    docker_compose pull -q "$@"
+  fi
+}
+
+dc_build() {
+  if ((VERBOSE)); then
+    docker_compose build "$@"
+  else
+    docker_compose build --quiet "$@"
+  fi
+}
+
+# helper for our own minimal logging (still shows in quiet mode)
+logv() { ((VERBOSE)) && printf "%b[%s]%b %s\n" "$CYAN" "${1:-info}" "$NC" "${2:-}" >&2 || true; }
+logq() { printf "%b[%s]%b %s\n" "$CYAN" "${1:-info}" "$NC" "${2:-}" >&2; }
+
 update_env() {
   local file=$1 var=$2 val=$3
   mkdir -p "$(dirname "$file")"
   [[ -f "$file" ]] || {
-    printf "%bFile '$file' not found. Creating one.%b\n" "$YELLOW" "$NC"
+    printf "%bFile '%s' not found. Creating one.%b\n" "$YELLOW" "$file" "$NC"
     : >"$file"
   }
   var=$(echo "$var" | sed 's/[]\/$*.^|[]/\\&/g')
@@ -222,7 +260,10 @@ launch_php() {
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
   for suffix in public dist public_html; do
-    [[ $docroot == */$suffix ]] && { docroot=${docroot%/*}; break; }
+    [[ $docroot == */$suffix ]] && {
+      docroot=${docroot%/*}
+      break
+    }
   done
 
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
@@ -295,38 +336,128 @@ install_ca() {
 }
 
 ###############################################################################
+# Compose helpers for rebuild
+###############################################################################
+compose_has_build() { # compose_has_build <service>
+  local svc="$1"
+  docker_compose config 2>/dev/null | awk -v s="$svc" '
+    $1=="services:" {in_services=1; next}
+    in_services && $0 ~ ("^  " s ":$") {in_svc=1; next}
+    in_svc && $0 ~ /^  [A-Za-z0-9_.-]+:$/ {exit 1}
+    in_svc && $0 ~ /^    build:/ {exit 0}
+    END {exit 1}
+  '
+}
+
+compose_image_for_service() { # compose_image_for_service <service>
+  local svc="$1"
+  docker_compose config 2>/dev/null | awk -v s="$svc" '
+    $1=="services:" {in_services=1; next}
+    in_services && $0 ~ ("^  " s ":$") {in_svc=1; next}
+    in_svc && $0 ~ /^  [A-Za-z0-9_.-]+:$/ {exit 0}
+    in_svc && $0 ~ /^    image:/ {
+      sub(/^    image:[[:space:]]*/, "", $0)
+      print $0
+      exit 0
+    }
+  '
+}
+
+###############################################################################
 # 6. COMMANDS
 ###############################################################################
-cmd_up() { docker_compose up; }
-cmd_start() { docker_compose up -d; http_reload; }
-cmd_reload() { cmd_start; }
+cmd_up() { dc_up "$@"; }
+
+cmd_start() {
+  dc_up -d "$@"
+  http_reload
+}
+
+cmd_reload() { cmd_start "$@"; }
 cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
-cmd_restart() { cmd_stop; cmd_start; }
+cmd_restart() {
+  cmd_stop
+  cmd_start
+}
 cmd_reboot() { cmd_restart; }
 
 normalize_service() {
-  local s="${1:-}"
-  s="${s// /}"
-  s="${s^^}"
+  local raw="${1:-}"
+  local s="${raw//[[:space:]]/}"
+  [[ -n "$s" ]] || {
+    printf '%s' ""
+    return 0
+  }
 
-  [[ "$s" =~ ^PHP_([0-9]+)\.([0-9]+)$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
-  [[ "$s" =~ ^PHP_([0-9]+)([0-9])$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
+  local low="${s,,}"
 
-  s="${1,,}"
-  s="${s//_/}"; s="${s//-/}"
-  [[ "$s" =~ ^php([0-9]+)\.([0-9]+)$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
-  [[ "$s" =~ ^php([0-9]+)([0-9])$ ]] && { printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; return 0; }
+  # PHP: collapse separators, then pick first two digits after "php"
+  local key="${low//_/}"
+  key="${key//-/}"
+  if [[ "$key" =~ ^php ]]; then
+    local ver="${key#php}"
+    ver="${ver//[^0-9]/}"
+    if [[ "$ver" =~ ^([0-9])([0-9]).* ]]; then
+      printf 'php%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+      return 0
+    fi
+    printf 'php'
+    return 0
+  fi
 
-  printf '%s' "${1,,}"
+  # others: underscore -> hyphen
+  low="${low//_/-}"
+  while [[ "$low" == *"--"* ]]; do low="${low//--/-}"; done
+  printf '%s' "$low"
 }
 
+# rebuild:
+# - server rebuild all
+# - server rebuild a b c
+# No stack "down" here.
 cmd_rebuild() {
-  docker_compose down
-  local -a targets=()
-  local t
-  for t in "$@"; do targets+=("$(normalize_service "$t")"); done
-  docker_compose build --no-cache --pull "${targets[@]}"
+  local -a svcs=()
+  local arg
+
+  (($# > 0)) || die "Usage: server rebuild all | server rebuild <service...>"
+
+  if [[ "${1,,}" == "all" ]]; then
+    mapfile -t svcs < <(docker_compose config --services 2>/dev/null)
+    [[ ${#svcs[@]} -gt 0 ]] || die "No services found (docker compose config --services failed?)"
+  else
+    for arg in "$@"; do
+      svcs+=("$(normalize_service "$arg")")
+    done
+  fi
+
+  local svc
+  for svc in "${svcs[@]}"; do
+    [[ -n "$svc" ]] || continue
+
+    if compose_has_build "$svc"; then
+      logq rebuild "build/recreate $svc"
+      # build already pulls base images with --pull; keep pull behavior consistent
+      dc_build --no-cache --pull "$svc"
+      dc_up -d --no-deps --force-recreate "$svc"
+      continue
+    fi
+
+    logq rebuild "pull/recreate $svc"
+
+    # remove only that container (no stack down)
+    docker_compose rm -sf "$svc" >/dev/null 2>&1 || true
+
+    # ensure "latest" actually refreshes
+    local img
+    img="$(compose_image_for_service "$svc")"
+    if [[ -n "${img:-}" ]]; then
+      docker rmi -f "$img" >/dev/null 2>&1 || true
+    fi
+
+    dc_pull "$svc"
+    dc_up -d --no-deps --force-recreate "$svc"
+  done
 }
 
 cmd_config() { docker_compose config; }
@@ -334,7 +465,11 @@ cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
-cmd_core() { local domain=${1:-}; [[ -n $domain ]] || die "Usage: server core <domain>"; launch_php "$domain"; }
+cmd_core() {
+  local domain=${1:-}
+  [[ -n $domain ]] || die "Usage: server core <domain>"
+  launch_php "$domain"
+}
 
 cmd_setup() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
@@ -342,16 +477,16 @@ cmd_setup() {
   update_env "$ENV_DOCKER" UID "$(id -u)"
   update_env "$ENV_DOCKER" GID "$(id -g)"
   case ${1:-} in
-  permission|permissions|perms|perm) fix_perms ;;
+  permission | permissions | perms | perm) fix_perms ;;
   domain) setup_domain ;;
-  profiles|profile) process_all ;;
+  profiles | profile) process_all ;;
   *) die "setup <permissions|domain|profiles>" ;;
   esac
 }
 
 cmd_env() {
   case ${1:-} in
-  init|boot) env_init ;;
+  init | boot) env_init ;;
   edit) die "ToDo" ;;
   *) die "env <init|edit>" ;;
   esac
@@ -368,22 +503,20 @@ notify_watch() {
 
   need docker notify-send
 
-  # ── watcher must not die because of pipefail / set -e ──────────────────
+  # watcher must not die because of pipefail / set -e
   trap - ERR
   set +e
   set +o pipefail
 
-  # Snapshot GUI env for detached notify calls (set -u safe)
   local _disp="${DISPLAY-}"
   local _dbus="${DBUS_SESSION_BUS_ADDRESS-}"
-
   local _stop=0
 
   _watcher_notify() {
     local urgency="${1:-critical}" title="${2:-Notifier}" body="${3:-Watcher event}"
-    ( env DISPLAY="${_disp-}" DBUS_SESSION_BUS_ADDRESS="${_dbus-}" \
+    (env DISPLAY="${_disp-}" DBUS_SESSION_BUS_ADDRESS="${_dbus-}" \
       setsid -f notify-send -u "$urgency" -t 2500 "$title" "$body" \
-      >/dev/null 2>&1 || true ) &
+      >/dev/null 2>&1 || true) &
   }
 
   _watcher_int_term() {
@@ -393,47 +526,42 @@ notify_watch() {
   }
   trap _watcher_int_term INT TERM
 
-  # grep should never be the reason we exit
   local grep_cmd=(grep -a --line-buffered -E "^${prefix}([[:space:]]|$)")
   command -v stdbuf &>/dev/null && grep_cmd=(stdbuf -oL -eL "${grep_cmd[@]}")
 
   printf "%bNotify Watch:%b monitoring is active. Ctrl+C to stop.\n" "$GREEN" "$NC"
 
-  while (( _stop == 0 )); do
-    # If container truly isn't running, notify and stop.
+  while ((_stop == 0)); do
     if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q true; then
       _watcher_notify critical "Notifier" "Watcher stopped: $container is not running"
       printf "%b[watcher]%b %s is not running; exiting.\n" "$RED" "$NC" "$container" >&2
       break
     fi
 
-    docker logs -f --tail 0 "$container" 2>&1 \
-      | ( "${grep_cmd[@]}" || true ) \
-      | while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
-      local timeout urgency title body
+    docker logs -f --tail 0 "$container" 2>&1 |
+      ("${grep_cmd[@]}" || true) |
+      while IFS=$'\t' read -r _ f1 f2 f3 f4 rest; do
+        local timeout urgency title body
+        if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
+          timeout="$f1"
+          urgency="${f2:-normal}"
+          title="${f3:-Notification}"
+          body="${f4:-}"
+        else
+          timeout="2500"
+          urgency="${f1:-normal}"
+          title="${f2:-Notification}"
+          body="${f3:-}"
+        fi
+        [[ -n "${rest:-}" ]] && body+=$'\t'"${rest}"
+        case "$urgency" in low | normal | critical) ;; *) urgency="normal" ;; esac
 
-      if [[ "${f1:-}" =~ ^[0-9]{1,6}$ ]]; then
-        timeout="$f1"
-        urgency="${f2:-normal}"
-        title="${f3:-Notification}"
-        body="${f4:-}"
-      else
-        timeout="2500"
-        urgency="${f1:-normal}"
-        title="${f2:-Notification}"
-        body="${f3:-}"
-      fi
+        notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
+        printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
+      done
 
-      [[ -n "${rest:-}" ]] && body+=$'\t'"${rest}"
-      case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
+    ((_stop)) && break
 
-      notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
-      printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
-    done
-
-    (( _stop )) && break
-
-    # log stream ended; decide whether to reconnect
     if docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q true; then
       _watcher_notify critical "Notifier" "Watcher lost log stream (docker logs ended). Reconnecting…"
       printf "%b[watcher]%b docker logs ended; reconnecting...\n" "$YELLOW" "$NC" >&2
@@ -447,12 +575,9 @@ notify_watch() {
   done
 
   trap - INT TERM
-
-  # restore strict mode for rest of script
   set -euo pipefail
 
-  # match typical Ctrl+C code if interrupted
-  (( _stop )) && return 130
+  ((_stop)) && return 130
   return 0
 }
 
@@ -465,20 +590,22 @@ notify_test() {
 cmd_notify() {
   case ${1:-watch} in
   watch) notify_watch "${2:-SERVER_TOOLS}" ;;
-  test)  notify_test "${2:-Notifier OK}" "${3:-Hello from host}" ;;
+  test) notify_test "${2:-Notifier OK}" "${3:-Hello from host}" ;;
   *) die "notify <watch [container]|test \"Title\" \"Body\">" ;;
   esac
 }
 
 cmd_help() {
   cat <<EOF
-${CYAN}Usage:${NC} server <command> [options]
+${CYAN}Usage:${NC} server [--verbose|-v] <command> [options]
+
+${CYAN}Default:${NC} quiet docker compose operations. Add ${CYAN}-v${NC} / ${CYAN}--verbose${NC} to see pull/build progress.
 
 ${CYAN}Core commands:${NC}
-  up / start                 Start docker stack ( up for foreground )
+  up / start                 Start docker stack (quiet pull by default)
   stop / down                Stop stack
   reload / restart           Restart stack + reload HTTP
-  rebuild                    Rebuild images (no cache)
+  rebuild all|<svc...>       Rebuild/pull services (no full down)
   config                     Validate compose
   tools                      Enter SERVER_TOOLS container
   lzd | lazydocker           Start LazyDocker
@@ -507,13 +634,40 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
-  [[ $# -gt 0 ]] || { cmd_help; exit 1; }
+  [[ $# -gt 0 ]] || {
+    cmd_help
+    exit 1
+  }
+
+  # global flags: quiet by default; -v enables verbose
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -v | --verbose)
+      VERBOSE=1
+      shift
+      ;;
+    -q | --quiet)
+      VERBOSE=0
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *) break ;;
+    esac
+  done
+
+  [[ $# -gt 0 ]] || {
+    cmd_help
+    exit 1
+  }
 
   case "${1,,}" in
-  php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|composer)
+  php | mariadb | mariadb-dump | mysql | mysql-dump | psql | pg_dump | pg_restore | composer)
     exec "$DIR/bin/$1" "${@:2}"
     ;;
-  redis|redis-cli)
+  redis | redis-cli)
     exec "$DIR/bin/redis-cli" "${@:2}"
     ;;
   esac
