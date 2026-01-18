@@ -179,7 +179,7 @@ fix_perms() {
 
   chmod 755 "$DIR/bin"
   find "$DIR/bin" -type f ! -name '*.bat' -exec chmod 744 {} +
-  chmod 744 "$DIR/server"
+  chmod +x "$DIR/server"
 
   ln -fs "$DIR/server" /usr/local/bin/server
   printf "%bPermissions assigned.%b\n" "$GREEN" "$NC"

@@ -273,71 +273,104 @@ function Get-Euid
 
 function Fix-Perms
 {
+    # Windows: behave like Linux "install" (make `server` runnable from anywhere)
+    # - Create a shim: %USERPROFILE%\bin\server.cmd -> calls <root>\server.bat
+    # - Ensure PATH contains: %USERPROFILE%\bin and <root>\bin (User PATH)
     if (Is-WindowsLike)
     {
+        $root = $DIR
+        $userHome = $env:USERPROFILE
+        if ([string]::IsNullOrWhiteSpace($userHome))
+        {
+            Die 'USERPROFILE is not set.'
+        }
+
+        $userBin = Join-Path $userHome 'bin'
+        $projBin = Join-Path $root 'bin'
+
+        $targetBat = Join-Path $root 'server.bat'
+        if (-not (Test-Path -LiteralPath $targetBat))
+        {
+            Die "server.bat not found at: $targetBat"
+        }
+
+        if (-not (Test-Path -LiteralPath $userBin))
+        {
+            New-Item -ItemType Directory -Path $userBin -Force | Out-Null
+        }
+
+        # Create/overwrite shim (ASCII is safest for .cmd)
+        $shim = Join-Path $userBin 'server.cmd'
+        $shimBody = "@echo off`r`ncall `"$targetBat`" %*`r`n"
+        Set-Content -LiteralPath $shim -Value $shimBody -Encoding Ascii
+
+        function Normalize-Path([string]$p)
+        {
+            if ([string]::IsNullOrWhiteSpace($p)) { return '' }
+            $x = $p.Trim()
+            while ($x.EndsWith('\') -or $x.EndsWith('/'))
+            {
+                $x = $x.Substring(0, $x.Length - 1)
+            }
+            return $x.ToLowerInvariant()
+        }
+
+        # Update User PATH (HKCU) and current process PATH
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ($null -eq $userPath) { $userPath = '' }
+
+        $parts = @()
+        foreach ($pp in ($userPath -split ';'))
+        {
+            $t = $pp.Trim()
+            if ($t) { $parts += $t }
+        }
+
+        $need = @($userBin, $projBin)
+        $changed = $false
+
+        foreach ($add in $need)
+        {
+            $nAdd = Normalize-Path $add
+
+            $exists = $false
+            foreach ($pp in $parts)
+            {
+                if ((Normalize-Path $pp) -eq $nAdd) { $exists = $true; break }
+            }
+
+            if (-not $exists)
+            {
+                $parts += $add
+                $changed = $true
+            }
+
+            # apply to current session for immediate usability
+            $envExists = $false
+            foreach ($ep in ($env:Path -split ';'))
+            {
+                if ((Normalize-Path $ep) -eq $nAdd) { $envExists = $true; break }
+            }
+            if (-not $envExists)
+            {
+                $env:Path = ($env:Path.TrimEnd(';') + ';' + $add)
+            }
+        }
+
+        if ($changed)
+        {
+            [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
+        }
+
+        Write-Host "$( $script:GREEN )Installed Windows shims + PATH.$( $script:NC )"
+        Write-Host "  shim : $shim"
+        Write-Host "  PATH+: $userBin"
+        Write-Host "  PATH+: $projBin"
+        Write-Host "$( $script:YELLOW )Open a NEW terminal to pick up User PATH changes system-wide.$( $script:NC )"
         return
     }
-
-    $euid = Get-Euid
-    if ($euid -ne 0)
-    {
-        Die "Please run with sudo (root)."
-    }
-
-    Need @('chmod', 'find', 'ln')
-
-    & chmod 755 $DIR
-
-    $conf = Join-Path $DIR 'configuration'
-    & chmod 2775 $conf
-    & find $conf -type f ! -perm 664 -exec chmod 664 '{}' '+' | Out-Null
-
-    $dockerDir = Join-Path $DIR 'docker'
-    & chmod 755 $dockerDir
-    & find $dockerDir -type f ! -perm 644 -exec chmod 644 '{}' '+' | Out-Null
-
-    $data = Join-Path $DIR 'data'
-    & chmod 2777 $data
-    $subDirs = @('cloudbeaver', 'mysql', 'postgresql', 'mongo', 'mariadb', 'elasticsearch', 'redis', 'redis-insight', 'kibana')
-    foreach ($sd in $subDirs)
-    {
-        New-Item -ItemType Directory -Path (Join-Path $data $sd) -Force | Out-Null
-    }
-    & find $data -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 '{}' '+' | Out-Null
-    & find $data -type f -exec chmod 666 '{}' '+' | Out-Null
-
-    $logs = Join-Path $DIR 'logs'
-    & chmod -R 777 $logs
-    if (Get-Command chown -ErrorAction SilentlyContinue)
-    {
-        $user = $env:USER
-        if (-not $user)
-        {
-            $user = (& id -un 2> $null).Trim()
-        }
-        if ($user)
-        {
-            & chown -R "$user:docker" $logs 2> $null | Out-Null
-        }
-    }
-
-    $bin = Join-Path $DIR 'bin'
-    & chmod 755 $bin
-    & find $bin -type f ! -name '*.bat' -exec chmod 744 '{}' '+' | Out-Null
-
-    $serverBash = Join-Path $DIR 'server'
-    if (Test-Path -LiteralPath $serverBash)
-    {
-        & chmod 744 $serverBash
-    }
-
-    if (Test-Path -LiteralPath $serverBash)
-    {
-        & ln -fs $serverBash /usr/local/bin/server 2> $null | Out-Null
-    }
-
-    Write-Host "$( $script:GREEN )Permissions assigned.$( $script:NC )"
 }
+
 
 ###############################################################################
 # 3. DOMAIN & PROFILE UTILITIES
@@ -1537,6 +1570,7 @@ $( $script:CYAN )Core commands:$( $script:NC )
 
 $( $script:CYAN )Setup commands:$( $script:NC )
   setup permissions          Assign/Fix directory/file permissions
+  perm / permissions         Same as `setup permissions` (Windows: install shim + PATH)
   setup domain               Setup domain
   setup profiles             Configure DB/cache/search profiles + write docker/.env + COMPOSE_PROFILES
 
@@ -1640,6 +1674,19 @@ try
 
     switch ($cmd)
     {
+        'perm' {
+            Fix-Perms
+        }
+        'perms' {
+            Fix-Perms
+        }
+        'permission' {
+            Fix-Perms
+        }
+        'permissions' {
+            Fix-Perms
+        }
+
         'up' {
             Cmd-Up $rest
         }
