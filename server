@@ -463,6 +463,7 @@ cmd_rebuild() {
 cmd_config() { docker_compose config; }
 cmd_tools() { docker exec -it SERVER_TOOLS bash; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
+cmd_lazydocker() { cmd_lzd; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
 cmd_core() {
