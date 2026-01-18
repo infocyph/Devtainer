@@ -273,9 +273,9 @@ function Get-Euid
 
 function Fix-Perms
 {
-    # Windows: behave like Linux "install" (make `server` runnable from anywhere)
-    # - Create a shim: %USERPROFILE%\bin\server.cmd -> calls <root>\server.bat
-    # - Ensure PATH contains: %USERPROFILE%\bin and <root>\bin (User PATH)
+    # Windows: "install" behavior
+    # - Create shim: %USERPROFILE%\bin\server.cmd -> calls <root>\server.bat
+    # - Ensure User PATH contains: %USERPROFILE%\bin and <root>\bin
     if (Is-WindowsLike)
     {
         $root = $DIR
@@ -369,8 +369,10 @@ function Fix-Perms
         Write-Host "$( $script:YELLOW )Open a NEW terminal to pick up User PATH changes system-wide.$( $script:NC )"
         return
     }
-}
 
+    Write-Host "$( $script:YELLOW )Fix-Perms is Windows-only in server.ps1. Use bash ./server on non-Windows.$( $script:NC )"
+    return
+}
 
 ###############################################################################
 # 3. DOMAIN & PROFILE UTILITIES
@@ -556,7 +558,7 @@ function Flush-Profiles
 
 function Process-Service([string]$ServiceKey)
 {
-    Write-Host "`n$( $script:YELLOW )→ $ServiceKey$( $script:NC )"
+    Write-Host "`n$( $script:YELLOW )-> $ServiceKey$( $script:NC )"
 
     if (-not (Ask-Yes "Enable $ServiceKey?"))
     {
@@ -571,19 +573,23 @@ function Process-Service([string]$ServiceKey)
     }
 
     Queue-Profile $profile
-    Write-Host "$($script: BLUE)Enter value(s) for $ServiceKey: $($script: NC)"
+    Write-Host "$($script:BLUE)Enter value(s) for $ServiceKey:$($script:NC)"
 
     $pairs = ($script:PROFILE_ENV[$profile] ?? '')
-    if (-not $pairs) {
+    if (-not $pairs)
+    {
     return
     }
 
-    foreach ($pair in ($pairs -split '\s+')) {
-    if (-not $pair) {
+    foreach ($pair in ($pairs -split '\s+'))
+    {
+    if (-not $pair)
+    {
     continue
     }
     $kv = $pair -split '=', 2
-    if ($kv.Count -ne 2) {
+    if ($kv.Count -ne 2)
+    {
     continue
     }
     $key = $kv[0]
@@ -602,7 +608,7 @@ function Process-All
     }
     Flush-Envs
     Flush-Profiles
-    Write-Host "`n$( $script:GREEN )✅ All services configured!$( $script:NC )"
+    Write-Host "`n$( $script:GREEN )OK: All services configured!$( $script:NC )"
 }
 
 ###############################################################################
@@ -884,7 +890,8 @@ function Get-ComposeConfigLines
 function Find-ServiceBlock([string]$Service)
 {
     $lines = Get-ComposeConfigLines
-    $svcLine = "  $Service: "
+    # IMPORTANT: docker compose config prints "  name:" (no trailing space)
+    $svcLine = "  $Service:"
     $inServices = $false
     $start = -1
 
@@ -965,7 +972,8 @@ function Normalize-Service([string]$Raw)
         $ver = ($key.Substring(3) -replace '[^0-9]', '')
         if ($ver -match '^([0-9])([0-9])')
         {
-            return "php$( $Matches[1] )$( $Matches[2] )"
+            # FIX: no spaces in interpolation
+            return "php$($Matches[1])$($Matches[2])"
         }
         return 'php'
     }
@@ -1319,46 +1327,11 @@ function Notify-Watch([string]$Container = 'SERVER_TOOLS')
 
             $payload = $line.Substring($prefix.Length).TrimStart()
             $parts = $payload -split "`t", 5
-            $f1 = if ($parts.Count -ge 1)
-            {
-                $parts[0]
-            }
-            else
-            {
-                ''
-            }
-            $f2 = if ($parts.Count -ge 2)
-            {
-                $parts[1]
-            }
-            else
-            {
-                ''
-            }
-            $f3 = if ($parts.Count -ge 3)
-            {
-                $parts[2]
-            }
-            else
-            {
-                ''
-            }
-            $f4 = if ($parts.Count -ge 4)
-            {
-                $parts[3]
-            }
-            else
-            {
-                ''
-            }
-            $rest = if ($parts.Count -ge 5)
-            {
-                $parts[4]
-            }
-            else
-            {
-                ''
-            }
+            $f1 = if ($parts.Count -ge 1) { $parts[0] } else { '' }
+            $f2 = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+            $f3 = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+            $f4 = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+            $rest = if ($parts.Count -ge 5) { $parts[4] } else { '' }
 
             $timeout = 2500
             $urgency = 'normal'
@@ -1368,57 +1341,15 @@ function Notify-Watch([string]$Container = 'SERVER_TOOLS')
             if ($f1 -match '^[0-9]{1,6}$')
             {
                 $timeout = [int]$f1
-                $urgency = if ($f2)
-                {
-                    $f2
-                }
-                else
-                {
-                    'normal'
-                }
-                $title = if ($f3)
-                {
-                    $f3
-                }
-                else
-                {
-                    'Notification'
-                }
-                $body = if ($f4)
-                {
-                    $f4
-                }
-                else
-                {
-                    ''
-                }
+                $urgency = if ($f2) { $f2 } else { 'normal' }
+                $title = if ($f3) { $f3 } else { 'Notification' }
+                $body = if ($f4) { $f4 } else { '' }
             }
             else
             {
-                $urgency = if ($f1)
-                {
-                    $f1
-                }
-                else
-                {
-                    'normal'
-                }
-                $title = if ($f2)
-                {
-                    $f2
-                }
-                else
-                {
-                    'Notification'
-                }
-                $body = if ($f3)
-                {
-                    $f3
-                }
-                else
-                {
-                    ''
-                }
+                $urgency = if ($f1) { $f1 } else { 'normal' }
+                $title = if ($f2) { $f2 } else { 'Notification' }
+                $body = if ($f3) { $f3 } else { '' }
             }
 
             if ($rest)
@@ -1465,7 +1396,7 @@ function Notify-Watch([string]$Container = 'SERVER_TOOLS')
 
         if ($stillRunning)
         {
-            Show-HostNotification 'critical' 2500 'Notifier' 'Watcher lost log stream (docker logs ended). Reconnecting…'
+            Show-HostNotification 'critical' 2500 'Notifier' 'Watcher lost log stream (docker logs ended). Reconnecting...'
             [Console]::Error.WriteLine("$( $script:YELLOW )[watcher]$( $script:NC ) docker logs ended; reconnecting...")
             Start-Sleep -Seconds 1
             continue
@@ -1509,14 +1440,7 @@ function Cmd-Notify
     switch ($sub)
     {
         'watch' {
-            $container = if ($Args.Count -ge 2)
-            {
-                $Args[1]
-            }
-            else
-            {
-                'SERVER_TOOLS'
-            }
+            $container = if ($Args.Count -ge 2) { $Args[1] } else { 'SERVER_TOOLS' }
             $code = Notify-Watch $container
             if ($code -ne 0)
             {
@@ -1525,27 +1449,13 @@ function Cmd-Notify
             return
         }
         'test' {
-            $t = if ($Args.Count -ge 2)
-            {
-                $Args[1]
-            }
-            else
-            {
-                'Notifier OK'
-            }
-            $b = if ($Args.Count -ge 3)
-            {
-                $Args[2]
-            }
-            else
-            {
-                'Hello from host'
-            }
+            $t = if ($Args.Count -ge 2) { $Args[1] } else { 'Notifier OK' }
+            $b = if ($Args.Count -ge 3) { $Args[2] } else { 'Hello from host' }
             Notify-Test $t $b
             return
         }
         default {
-            Die 'notify <watch [container]|test "Title" "Body">'
+            Die 'notify <watch [container]|test \"Title\" \"Body\">'
         }
     }
 }
@@ -1569,8 +1479,8 @@ $( $script:CYAN )Core commands:$( $script:NC )
   core <domain>              Open bash in PHP container for <domain>
 
 $( $script:CYAN )Setup commands:$( $script:NC )
-  setup permissions          Assign/Fix directory/file permissions
-  perm / permissions         Same as `setup permissions` (Windows: install shim + PATH)
+  setup permissions          Windows: install shim + PATH (server + bin wrappers)
+  perm / permissions         Same as 'setup permissions'
   setup domain               Setup domain
   setup profiles             Configure DB/cache/search profiles + write docker/.env + COMPOSE_PROFILES
 
@@ -1610,23 +1520,13 @@ try
         $a = $argv[0]
         switch ($a)
         {
-            '-v' {
-                $script:VERBOSE = $true;$argv.RemoveAt(0); continue
-            }
-            '--verbose' {
-                $script:VERBOSE = $true;$argv.RemoveAt(0); continue
-            }
-            '-q' {
-                $script:VERBOSE = $false;$argv.RemoveAt(0); continue
-            }
-            '--quiet' {
-                $script:VERBOSE = $false;$argv.RemoveAt(0); continue
-            }
-            '--' {
-                $argv.RemoveAt(0); break
-            }
+            '-v' { $script:VERBOSE = $true; $argv.RemoveAt(0); continue }
+            '--verbose' { $script:VERBOSE = $true; $argv.RemoveAt(0); continue }
+            '-q' { $script:VERBOSE = $false; $argv.RemoveAt(0); continue }
+            '--quiet' { $script:VERBOSE = $false; $argv.RemoveAt(0); continue }
+            '--' { $argv.RemoveAt(0); break }
             default {
-                if ( $a.StartsWith('-'))
+                if ($a.StartsWith('-'))
                 {
                     Die "Unknown global option: $a"
                 }
@@ -1674,79 +1574,31 @@ try
 
     switch ($cmd)
     {
-        'perm' {
-            Fix-Perms
-        }
-        'perms' {
-            Fix-Perms
-        }
-        'permission' {
-            Fix-Perms
-        }
-        'permissions' {
-            Fix-Perms
-        }
+        'perm' { Fix-Perms }
+        'perms' { Fix-Perms }
+        'permission' { Fix-Perms }
+        'permissions' { Fix-Perms }
 
-        'up' {
-            Cmd-Up $rest
-        }
-        'start' {
-            Cmd-Start $rest
-        }
-        'reload' {
-            Cmd-Reload $rest
-        }
-        'restart' {
-            Cmd-Restart $rest
-        }
-        'reboot' {
-            Cmd-Reboot $rest
-        }
-        'stop' {
-            Cmd-Stop $rest
-        }
-        'down' {
-            Cmd-Down $rest
-        }
-        'rebuild' {
-            Cmd-Rebuild $rest
-        }
-        'config' {
-            Cmd-Config $rest
-        }
-        'tools' {
-            Cmd-Tools $rest
-        }
-        'lzd' {
-            Cmd-Lzd $rest
-        }
-        'lazydocker' {
-            Cmd-Lazydocker $rest
-        }
-        'http' {
-            Cmd-Http $rest
-        }
-        'core' {
-            Cmd-Core $rest
-        }
-        'cli' {
-            Cmd-Cli $rest
-        }
-        'setup' {
-            Cmd-Setup $rest
-        }
-        'env' {
-            Cmd-Env $rest
-        }
-        'install' {
-            Cmd-Install $rest
-        }
-        'notify' {
-            Cmd-Notify $rest
-        }
-        'help' {
-            Cmd-Help
-        }
+        'up' { Cmd-Up $rest }
+        'start' { Cmd-Start $rest }
+        'reload' { Cmd-Reload $rest }
+        'restart' { Cmd-Restart $rest }
+        'reboot' { Cmd-Reboot $rest }
+        'stop' { Cmd-Stop $rest }
+        'down' { Cmd-Down $rest }
+        'rebuild' { Cmd-Rebuild $rest }
+        'config' { Cmd-Config $rest }
+        'tools' { Cmd-Tools $rest }
+        'lzd' { Cmd-Lzd $rest }
+        'lazydocker' { Cmd-Lazydocker $rest }
+        'http' { Cmd-Http $rest }
+        'core' { Cmd-Core $rest }
+        'cli' { Cmd-Cli $rest }
+        'setup' { Cmd-Setup $rest }
+        'env' { Cmd-Env $rest }
+        'install' { Cmd-Install $rest }
+        'notify' { Cmd-Notify $rest }
+        'help' { Cmd-Help }
         default {
             Write-Host ""
             Write-Host "$( $script:RED )Error:$( $script:NC ) Unknown command '$cmd'"

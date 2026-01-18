@@ -15,13 +15,11 @@ COMPOSE_FILE="$CFG/compose/main.yaml"
 
 COLOR() { printf '\033[%sm' "$1"; }
 RED=$(COLOR '0;31') GREEN=$(COLOR '0;32') CYAN=$(COLOR '0;36')
-YELLOW=$(COLOR '1;33') NC=$(COLOR '0')
+YELLOW=$(COLOR '1;33') BLUE=$(COLOR '0;34') MAGENTA=$(COLOR '0;35')
+NC=$(COLOR '0')
 
 # Default behavior: QUIET
 VERBOSE=0
-
-# shellcheck source=/dev/null
-source "$CFG/utilities/profiles"
 
 #───────────────────────────────────────────────────────────────────────────────
 # 0. GLOBAL ERROR HANDLER
@@ -55,10 +53,7 @@ need() {
     IFS='|,' read -ra alts <<<"$group"
     found=0
     for cmd in "${alts[@]}"; do
-      command -v "$cmd" &>/dev/null && {
-        found=1
-        break
-      }
+      command -v "$cmd" &>/dev/null && { found=1; break; }
     done
     ((found)) && continue
     local miss=${alts[*]}
@@ -106,26 +101,20 @@ docker_compose() {
 
 # ── docker compose wrappers (QUIET by default) ────────────────────────────────
 dc_up() {
-  if ((VERBOSE)); then
-    docker_compose up "$@"
-  else
-    docker_compose up --quiet-pull "$@"
+  if ((VERBOSE)); then docker_compose up "$@"
+  else docker_compose up --quiet-pull "$@"
   fi
 }
 
 dc_pull() {
-  if ((VERBOSE)); then
-    docker_compose pull "$@"
-  else
-    docker_compose pull -q "$@"
+  if ((VERBOSE)); then docker_compose pull "$@"
+  else docker_compose pull -q "$@"
   fi
 }
 
 dc_build() {
-  if ((VERBOSE)); then
-    docker_compose build "$@"
-  else
-    docker_compose build --quiet "$@"
+  if ((VERBOSE)); then docker_compose build "$@"
+  else docker_compose build --quiet "$@"
   fi
 }
 
@@ -133,17 +122,27 @@ dc_build() {
 logv() { ((VERBOSE)) && printf "%b[%s]%b %s\n" "$CYAN" "${1:-info}" "$NC" "${2:-}" >&2 || true; }
 logq() { printf "%b[%s]%b %s\n" "$CYAN" "${1:-info}" "$NC" "${2:-}" >&2; }
 
+# Unified prompt helper (used by env_init + profiles)
+read_default() {
+  local prompt=$1 default=$2 input
+  read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input
+  printf '%s' "${input:-$default}"
+}
+
+ask_yes() {
+  local prompt="$1" ans
+  read -rp "$(printf "%b%s (y/n): %b" "$BLUE" "$prompt" "$NC")" ans
+  [[ "${ans,,}" == "y" ]]
+}
+
 update_env() {
   local file=$1 var=$2 val=$3
   mkdir -p "$(dirname "$file")"
-  [[ -f "$file" ]] || {
-    printf "%bFile '%s' not found. Creating one.%b\n" "$YELLOW" "$file" "$NC"
-    : >"$file"
-  }
+  [[ -f "$file" ]] || { printf "%bFile '%s' not found. Creating one.%b\n" "$YELLOW" "$file" "$NC"; : >"$file"; }
   var=$(echo "$var" | sed 's/[]\/$*.^|[]/\\&/g')
   grep -qE "^[# ]*$var=" "$file" 2>/dev/null &&
     sed -Ei "s|^[# ]*($var)=.*|\1=$val|" "$file" ||
-    echo "$var=$val" >>"$file"
+    echo "${var}=${val}" >>"$file"
 }
 
 http_reload() {
@@ -238,6 +237,82 @@ modify_profiles() {
   )"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Profiles (merged from docker/utilities/profiles)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# SERVICE → PROFILE map (single profile per service)
+declare -A SERVICES=(
+  [ELASTICSEARCH]="elasticsearch"
+  [MYSQL]="mysql"
+  [MARIADB]="mariadb"
+  [MONGODB]="mongodb"
+  [REDIS]="redis"
+  [POSTGRESQL]="postgresql"
+)
+
+# stable prompt order (associative arrays are unordered)
+declare -a SERVICE_ORDER=(ELASTICSEARCH MYSQL MARIADB MONGODB REDIS POSTGRESQL)
+
+# PROFILE → KEY=DEFAULT entries
+declare -A PROFILE_ENV=(
+  [elasticsearch]="ELASTICSEARCH_VERSION=8.18.0 ELASTICSEARCH_PORT=9200"
+  [mysql]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=infocyph MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
+  [mariadb]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=infocyph MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb"
+  [mongodb]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
+  [redis]="REDIS_VERSION=latest REDIS_PORT=6379"
+  [postgresql]="POSTGRES_VERSION=latest POSTGRES_PORT=5432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres POSTGRES_DATABASE=postgres"
+)
+
+# Queues for “deferred” operations
+declare -a PENDING_ENVS=()
+declare -a PENDING_PROFILES=()
+
+queue_env()     { PENDING_ENVS+=( "$1" ); }
+queue_profile() { PENDING_PROFILES+=( "$1" ); }
+
+flush_envs() {
+  local env_file="$ENV_DOCKER" kv key val
+  for kv in "${PENDING_ENVS[@]}"; do
+    IFS='=' read -r key val <<<"$kv"
+    update_env "$env_file" "$key" "$val"
+  done
+}
+
+flush_profiles() {
+  local profile
+  for profile in "${PENDING_PROFILES[@]}"; do
+    modify_profiles add "$profile"
+  done
+}
+
+process_service() {
+  local service="$1"
+  printf "\n%b→ %s%b\n" "$YELLOW" "$service" "$NC"
+  ask_yes "Enable $service?" || { printf "%bSkipping %s%b\n" "$RED" "$service" "$NC"; return; }
+
+  local profile="${SERVICES[$service]}"
+  queue_profile "$profile"
+
+  printf "%bEnter value(s) for %s:%b\n" "$BLUE" "$service" "$NC"
+  local pair key def val
+  for pair in ${PROFILE_ENV[$profile]}; do
+    IFS='=' read -r key def <<<"$pair"
+    val=$(read_default "$key" "$def")
+    queue_env "$key=$val"
+  done
+}
+
+process_all() {
+  local svc
+  for svc in "${SERVICE_ORDER[@]}"; do
+    process_service "$svc"
+  done
+  flush_envs
+  flush_profiles
+  printf "\n%b✅ All services configured!%b\n" "$GREEN" "$NC"
+}
+
 ###############################################################################
 # 4. LAUNCH PHP CONTAINER INSIDE DOCROOT
 ###############################################################################
@@ -260,10 +335,7 @@ launch_php() {
   [[ $php ]] || die "Could not detect PHP container for $domain"
   [[ $docroot ]] || docroot=/app
   for suffix in public dist public_html; do
-    [[ $docroot == */$suffix ]] && {
-      docroot=${docroot%/*}
-      break
-    }
+    [[ $docroot == */$suffix ]] && { docroot=${docroot%/*}; break; }
   done
 
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
@@ -273,12 +345,6 @@ launch_php() {
 ###############################################################################
 # 5. ENV + CERT
 ###############################################################################
-read_default() {
-  local prompt=$1 default=$2 input
-  read -rp "$(printf '%b%s [default: %s]:%b ' "$CYAN" "$prompt" "$default" "$NC")" input
-  printf '%s' "${input:-$default}"
-}
-
 detect_timezone() {
   if command -v timedatectl &>/dev/null; then
     timedatectl show -p Timezone --value
@@ -294,7 +360,7 @@ detect_timezone() {
 }
 
 env_init() {
-  local env_file="$DIR/docker/.env"
+  local env_file="$ENV_DOCKER"
   printf "%bBootstrapping environment defaults…%b\n" "$YELLOW" "$NC"
 
   local default_tz tz
@@ -376,19 +442,13 @@ cmd_start() {
 cmd_reload() { cmd_start "$@"; }
 cmd_stop() { docker_compose down; }
 cmd_down() { cmd_stop; }
-cmd_restart() {
-  cmd_stop
-  cmd_start
-}
+cmd_restart() { cmd_stop; cmd_start; }
 cmd_reboot() { cmd_restart; }
 
 normalize_service() {
   local raw="${1:-}"
   local s="${raw//[[:space:]]/}"
-  [[ -n "$s" ]] || {
-    printf '%s' ""
-    return 0
-  }
+  [[ -n "$s" ]] || { printf '%s' ""; return 0; }
 
   local low="${s,,}"
 
@@ -437,7 +497,6 @@ cmd_rebuild() {
 
     if compose_has_build "$svc"; then
       logq rebuild "build/recreate $svc"
-      # build already pulls base images with --pull; keep pull behavior consistent
       dc_build --no-cache --pull "$svc"
       dc_up -d --no-deps --force-recreate "$svc"
       continue
@@ -445,10 +504,8 @@ cmd_rebuild() {
 
     logq rebuild "pull/recreate $svc"
 
-    # remove only that container (no stack down)
     docker_compose rm -sf "$svc" >/dev/null 2>&1 || true
 
-    # ensure "latest" actually refreshes
     local img
     img="$(compose_image_for_service "$svc")"
     if [[ -n "${img:-}" ]]; then
@@ -478,16 +535,16 @@ cmd_setup() {
   update_env "$ENV_DOCKER" UID "$(id -u)"
   update_env "$ENV_DOCKER" GID "$(id -g)"
   case ${1:-} in
-  permission | permissions | perms | perm) fix_perms ;;
+  permission|permissions|perms|perm) fix_perms ;;
   domain) setup_domain ;;
-  profiles | profile) process_all ;;
+  profiles|profile) process_all ;;
   *) die "setup <permissions|domain|profiles>" ;;
   esac
 }
 
 cmd_env() {
   case ${1:-} in
-  init | boot) env_init ;;
+  init|boot) env_init ;;
   edit) die "ToDo" ;;
   *) die "env <init|edit>" ;;
   esac
@@ -504,7 +561,6 @@ notify_watch() {
 
   need docker notify-send
 
-  # watcher must not die because of pipefail / set -e
   trap - ERR
   set +e
   set +o pipefail
@@ -555,7 +611,7 @@ notify_watch() {
           body="${f3:-}"
         fi
         [[ -n "${rest:-}" ]] && body+=$'\t'"${rest}"
-        case "$urgency" in low | normal | critical) ;; *) urgency="normal" ;; esac
+        case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
 
         notify-send -t "$timeout" -u "$urgency" "$title" "$body" >/dev/null 2>&1 || true
         printf "%s [%s] %s - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$urgency" "$title" "$body" >&2
@@ -635,30 +691,21 @@ EOF
 main() {
   need docker readlink,greadlink
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
+
   [[ $# -gt 0 ]] || { cmd_help; exit 1; }
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    -v|--verbose)
-      VERBOSE=1
-      shift
-      ;;
-    -q|--quiet)
-      VERBOSE=0
-      shift
-      ;;
-    --)
-      shift
-      break
-      ;;
-    -*)
-      die "Unknown global option: $1"
-      ;;
-    *)
-      break
-      ;;
+    -v|--verbose) VERBOSE=1; shift ;;
+    -q|--quiet)   VERBOSE=0; shift ;;
+    --) shift; break ;;
+    -*) die "Unknown global option: $1" ;;
+    *)  break ;;
     esac
   done
+
   [[ $# -gt 0 ]] || { cmd_help; exit 1; }
+
   case "${1,,}" in
   php|mariadb|mariadb-dump|mysql|mysql-dump|psql|pg_dump|pg_restore|composer)
     exec "$DIR/bin/$1" "${@:2}"
@@ -667,6 +714,7 @@ main() {
     exec "$DIR/bin/redis-cli" "${@:2}"
     ;;
   esac
+
   cmd_"${1,,}" "${@:2}"
 }
 
