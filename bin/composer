@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die(){ echo "Error: $*" >&2; exit 1; }
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pretty output (auto-disable when stderr isn't a TTY)
@@ -12,9 +15,12 @@ if [[ -t 2 ]]; then
   C_CYAN=$'\033[0;36m'
   C_GREEN=$'\033[0;32m'
   C_YELLOW=$'\033[0;33m'
-  C_MAGENTA=$'\033[0;35m'
 else
-  C_RESET=""; C_DIM=""; C_CYAN=""; C_GREEN=""; C_YELLOW=""; C_MAGENTA=""
+  C_RESET=""
+  C_DIM=""
+  C_CYAN=""
+  C_GREEN=""
+  C_YELLOW=""
 fi
 
 # title cyan, value colored
@@ -28,16 +34,37 @@ ver_norm() { # "8.4" -> "8.4.0"
   if [[ "$v" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
     local a b c
     IFS='.' read -r a b c <<<"$v"
-    b="${b:-0}"; c="${c:-0}"
+    b="${b:-0}"
+    c="${c:-0}"
     echo "${a}.${b}.${c}"
   else
     echo "$v"
   fi
 }
-ver_cmp_ge(){ local a b; a="$(ver_norm "$1")"; b="$(ver_norm "$2")"; [[ "$(printf "%s\n%s\n" "$b" "$a" | sort -V | tail -n1)" == "$a" ]]; }
-ver_cmp_gt(){ local a b; a="$(ver_norm "$1")"; b="$(ver_norm "$2")"; [[ "$a" != "$b" ]] && ver_cmp_ge "$a" "$b"; }
-ver_cmp_le(){ local a b; a="$(ver_norm "$1")"; b="$(ver_norm "$2")"; [[ "$(printf "%s\n%s\n" "$a" "$b" | sort -V | head -n1)" == "$a" ]]; }
-ver_cmp_lt(){ local a b; a="$(ver_norm "$1")"; b="$(ver_norm "$2")"; [[ "$a" != "$b" ]] && ver_cmp_le "$a" "$b"; }
+ver_cmp_ge() {
+  local a b
+  a="$(ver_norm "$1")"
+  b="$(ver_norm "$2")"
+  [[ "$(printf "%s\n%s\n" "$b" "$a" | sort -V | tail -n1)" == "$a" ]]
+}
+ver_cmp_gt() {
+  local a b
+  a="$(ver_norm "$1")"
+  b="$(ver_norm "$2")"
+  [[ "$a" != "$b" ]] && ver_cmp_ge "$a" "$b"
+}
+ver_cmp_le() {
+  local a b
+  a="$(ver_norm "$1")"
+  b="$(ver_norm "$2")"
+  [[ "$(printf "%s\n%s\n" "$a" "$b" | sort -V | head -n1)" == "$a" ]]
+}
+ver_cmp_lt() {
+  local a b
+  a="$(ver_norm "$1")"
+  b="$(ver_norm "$2")"
+  [[ "$a" != "$b" ]] && ver_cmp_le "$a" "$b"
+}
 
 read_php_constraint() {
   [[ -f composer.json ]] || return 1
@@ -45,7 +72,10 @@ read_php_constraint() {
   if command -v jq >/dev/null 2>&1; then
     local v
     v="$(jq -r '.require.php // empty' composer.json 2>/dev/null || true)"
-    [[ -n "$v" && "$v" != "null" ]] && { echo "$v"; return 0; }
+    [[ -n "$v" && "$v" != "null" ]] && {
+      echo "$v"
+      return 0
+    }
   fi
 
   if command -v python3 >/dev/null 2>&1; then
@@ -72,7 +102,8 @@ PY
 constraint_allows() {
   local constraint="$1"
   local cand="$2" # "8.4"
-  local cand_full; cand_full="$(ver_norm "$cand")"
+  local cand_full
+  cand_full="$(ver_norm "$cand")"
 
   [[ -z "${constraint// /}" ]] && return 0
 
@@ -111,7 +142,7 @@ constraint_allows() {
       if [[ "$tok" =~ ^\^([0-9]+)\.([0-9]+) ]]; then
         local maj="${BASH_REMATCH[1]}" min="${BASH_REMATCH[2]}"
         local lower="${maj}.${min}"
-        local upper="$((maj+1)).0"
+        local upper="$((maj + 1)).0"
         ver_cmp_ge "$cand_full" "$(ver_norm "$lower")" && ver_cmp_lt "$cand_full" "$(ver_norm "$upper")" || ok=false
         continue
       fi
@@ -119,7 +150,7 @@ constraint_allows() {
       if [[ "$tok" =~ ^~([0-9]+)\.([0-9]+) ]]; then
         local maj="${BASH_REMATCH[1]}" min="${BASH_REMATCH[2]}"
         local lower="${maj}.${min}"
-        local upper="${maj}.$((min+1))"
+        local upper="${maj}.$((min + 1))"
         ver_cmp_ge "$cand_full" "$(ver_norm "$lower")" && ver_cmp_lt "$cand_full" "$(ver_norm "$upper")" || ok=false
         continue
       fi
@@ -129,8 +160,8 @@ constraint_allows() {
         case "$op" in
         '>=') ver_cmp_ge "$cand_full" "$(ver_norm "$v")" || ok=false ;;
         '<=') ver_cmp_le "$cand_full" "$(ver_norm "$v")" || ok=false ;;
-        '>')  ver_cmp_gt "$cand_full" "$(ver_norm "$v")" || ok=false ;;
-        '<')  ver_cmp_lt "$cand_full" "$(ver_norm "$v")" || ok=false ;;
+        '>') ver_cmp_gt "$cand_full" "$(ver_norm "$v")" || ok=false ;;
+        '<') ver_cmp_lt "$cand_full" "$(ver_norm "$v")" || ok=false ;;
         esac
         continue
       fi
@@ -150,12 +181,12 @@ constraint_allows() {
 }
 
 running_php_versions() {
-  docker ps --format '{{.Names}}' \
-    | awk -F'_' '/^PHP_[0-9]+\.[0-9]+$/ {print $2}' \
-    | sort -Vr
+  docker ps --format '{{.Names}}' |
+    awk -F'_' '/^PHP_[0-9]+\.[0-9]+$/ {print $2}' |
+    sort -Vr
 }
 
-pick_container_by_version(){ echo "PHP_$1"; }
+pick_container_by_version() { echo "PHP_$1"; }
 
 pick_best_container() {
   local explicit_ver="$1"
@@ -165,7 +196,8 @@ pick_best_container() {
   [[ ${#versions[@]} -gt 0 ]] || die "no PHP container is running (expected names like PHP_8.4)."
 
   if [[ -n "$explicit_ver" ]]; then
-    local cname; cname="$(pick_container_by_version "$explicit_ver")"
+    local cname
+    cname="$(pick_container_by_version "$explicit_ver")"
     docker ps --format '{{.Names}}' | grep -qx "$cname" || die "container '$cname' is not running."
     printf "%s\n%s\n%s\n" "$cname" "$explicit_ver" "explicit via -V"
     return 0
@@ -192,13 +224,20 @@ ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-  -V|--php)
+  -V | --php)
     [[ -n "${2:-}" ]] || die "-V/--php requires a version (e.g. -V 8.3)"
     EXPLICIT_VER="$2"
     shift 2
     ;;
-  --) shift; ARGS+=("$@"); break ;;
-  *)  ARGS+=("$1"); shift ;;
+  --)
+    shift
+    ARGS+=("$@")
+    break
+    ;;
+  *)
+    ARGS+=("$1")
+    shift
+    ;;
   esac
 done
 
@@ -220,13 +259,12 @@ DETECT_REASON=""
   read -r DETECT_REASON
 } < <(pick_best_container "$EXPLICIT_VER" "$PHP_CONSTRAINT")
 
-IMAGE="$(docker inspect -f '{{.Config.Image}}' "$TARGET_CONTAINER" 2>/dev/null)" \
-  || die "failed to inspect container '$TARGET_CONTAINER'."
+IMAGE="$(docker inspect -f '{{.Config.Image}}' "$TARGET_CONTAINER" 2>/dev/null)" ||
+  die "failed to inspect container '$TARGET_CONTAINER'."
 
 kv "PHP detected:" "${C_YELLOW}${DETECTED_VER}${C_RESET} ${C_DIM}(${DETECT_REASON})${C_RESET}" "$C_RESET"
-kv "Container:"    "${C_YELLOW}${TARGET_CONTAINER}${C_RESET}" "$C_RESET"
-kv "Image:"        "${C_YELLOW}${IMAGE}${C_RESET}" "$C_RESET"
-
+kv "Container:" "${C_YELLOW}${TARGET_CONTAINER}${C_RESET}" "$C_RESET"
+kv "Image:" "${C_YELLOW}${IMAGE}${C_RESET}" "$C_RESET"
 
 # ----------------------------
 # Run composer in current dir
