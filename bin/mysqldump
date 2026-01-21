@@ -1,69 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# mysqldump (docker wrapper)
-# - No persistent volumes
-# - For file output, uses an ephemeral container with -v "$PWD":/workspace (dynamic mount only when needed)
-# - Pulls creds from the RUNNING MYSQL container env (preferred), host docker/.env is optional fallback
-#
-# Shortcuts:
-#   mysqldump dump [db] [out.sql]
-#   mysqldump dump-all [out.sql]          # all dbs into one file (includes create db/use)
-#   mysqldump schema [db] [out.sql]       # no data
-#   mysqldump data [db] [out.sql]         # no schema
-#   mysqldump <raw mysqldump args...>     # defaults to root creds inside MYSQL container
-#
-# Notes:
-# - If you just run: mysqldump mydb > mydb.sql   (raw mode)
-#   it will exec mysqldump inside container and stream to stdout.
-
-SERVICE="${MYSQL_CONTAINER:-MYSQL}"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../docker/.env"
-
 die() {
   echo "Error: $*" >&2
   exit 1
 }
 
-require_container() {
-  docker ps --format '{{.Names}}' | grep -qx "$SERVICE" ||
-    die "container '$SERVICE' is not running."
-}
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo layout:
+#   <root>/bin/mysqldump
+#   <root>/docker/.env
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/docker/.env"
 
-is_tty() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
+# Optional: whitelist-load only what we need from host env (safe)
+if [[ -r "$ENV_FILE" ]]; then
+  while IFS='=' read -r k v; do
+    [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
+    k="${k//[[:space:]]/}"
+    case "$k" in
+    MYSQL_CONTAINER | MYSQL_PORT_IN | MYSQL_ROOT_PASSWORD | MYSQL_DATABASE) ;;
+    *) continue ;;
+    esac
+    v="${v%$'\r'}"
+    v="${v#\"}"
+    v="${v%\"}"
+    v="${v#\'}"
+    v="${v%\'}"
+    export "$k=$v"
+  done <"$ENV_FILE"
+fi
 
-# Best source of truth: env vars inside the running MySQL container
+SERVICE="${MYSQL_CONTAINER:-MYSQL}"
+MYSQL_PORT_IN="${MYSQL_PORT_IN:-}"
+
+# Faster check
+require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
+
+# Best source of truth: env vars inside running container
 cenv() {
   local key="$1"
   docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
 }
 
-# Optional fallback: host docker/.env (skip UID)
-load_host_env_fallback() {
-  [[ -r "$ENV_FILE" ]] || return 0
-  set -o allexport
-  # shellcheck disable=SC1090
-  source <(grep -v '^UID=' "$ENV_FILE")
-  set +o allexport
-}
-
 mysql_image() {
-  docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null ||
-    die "failed to inspect image for '$SERVICE'."
+  docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || die "failed to inspect image for '$SERVICE'."
 }
 
-# Ephemeral client container with dynamic mount of current dir
-# Uses --network container:MYSQL so it can talk to server via 127.0.0.1
-run_client() {
+infer_port() {
+  [[ -n "${MYSQL_PORT_IN:-}" ]] && return 0
+  MYSQL_PORT_IN="$(cenv MYSQL_PORT || true)"
+  MYSQL_PORT_IN="${MYSQL_PORT_IN:-3306}"
+}
+
+# Ephemeral client with dynamic mount (only for file output)
+run_client_mount_pwd() {
   local image="$1"
   shift
-  local root_pw="$1"
-  shift
-
-  docker run --rm -v "$PWD":/workspace -w /workspace --network "container:$SERVICE" \
-    -e MYSQL_ROOT_PASSWORD="$root_pw" \
+  docker run --rm \
+    -v "$PWD":/workspace -w /workspace \
+    --network "container:$SERVICE" \
     "$image" "$@"
 }
 
@@ -72,29 +69,29 @@ usage() {
 Usage:
   mysqldump dump [db] [out.sql]
   mysqldump dump-all [out.sql]
-  mysqldump schema [db] [out.sql]
-  mysqldump data [db] [out.sql]
-  mysqldump [raw mysqldump args...]          # streams to stdout (no file writing)
+  mysqldump schema [db] [out.sql]       # no data
+  mysqldump data [db] [out.sql]         # no schema
+  mysqldump [raw mysqldump args...]     # streams to stdout (no file writing)
 
 Examples:
   mysqldump dump localdb localdb.sql
   mysqldump schema localdb schema.sql
   mysqldump data localdb data.sql
   mysqldump dump-all all.sql
-  mysqldump localdb > localdb.sql            # raw mode
+  mysqldump localdb > localdb.sql
 TXT
 }
 
 main() {
   require_container
-  load_host_env_fallback
+  infer_port
 
   local ROOT_PW DB IMAGE
   ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD)"
   DB="$(cenv MYSQL_DATABASE)"
   IMAGE="$(mysql_image)"
 
-  # If container env is missing (unlikely), fallback to host env
+  # Fallback to host env (optional)
   [[ -n "$ROOT_PW" ]] || ROOT_PW="${MYSQL_ROOT_PASSWORD:-}"
   [[ -n "$DB" ]] || DB="${MYSQL_DATABASE:-}"
 
@@ -104,19 +101,31 @@ main() {
     usage
     exit 0
     ;;
+  esac
 
+  case "$cmd" in
   dump)
     shift
     local db="${1:-$DB}"
     [[ -n "$db" ]] || die "dump requires a db name (or set MYSQL_DATABASE)."
     local out="${2:-${db}.sql}"
 
-    run_client "$IMAGE" "$ROOT_PW" sh -lc '
-        db="$1"; out="$2"
-        exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        mysqldump --defaults-extra-file="$cf" \
           --single-transaction --quick --routines --events \
           "$db" > "/workspace/$out"
-      ' sh "$db" "$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
 
     echo "OK: dumped '$db' -> ./$out" >&2
     ;;
@@ -125,14 +134,22 @@ main() {
     shift
     local out="${1:-all.sql}"
 
-    # Use --databases + --all-databases? I prefer --all-databases for true "all",
-    # but it includes mysql/sys/performance_schema too. That's usually what "all" means.
-    run_client "$IMAGE" "$ROOT_PW" sh -lc '
-        out="$1"
-        exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        out="$1"; pw="$2"; port="$3"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        mysqldump --defaults-extra-file="$cf" \
           --single-transaction --quick --routines --events \
           --all-databases > "/workspace/$out"
-      ' sh "$out"
+      ' sh "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
 
     echo "OK: dumped all databases -> ./$out" >&2
     ;;
@@ -143,12 +160,22 @@ main() {
     [[ -n "$db" ]] || die "schema requires a db name (or set MYSQL_DATABASE)."
     local out="${2:-${db}.schema.sql}"
 
-    run_client "$IMAGE" "$ROOT_PW" sh -lc '
-        db="$1"; out="$2"
-        exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        mysqldump --defaults-extra-file="$cf" \
           --no-data --routines --events \
           "$db" > "/workspace/$out"
-      ' sh "$db" "$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
 
     echo "OK: schema dumped '$db' -> ./$out" >&2
     ;;
@@ -159,24 +186,42 @@ main() {
     [[ -n "$db" ]] || die "data requires a db name (or set MYSQL_DATABASE)."
     local out="${2:-${db}.data.sql}"
 
-    run_client "$IMAGE" "$ROOT_PW" sh -lc '
-        db="$1"; out="$2"
-        exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" \
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        mysqldump --defaults-extra-file="$cf" \
           --no-create-info --skip-triggers \
           --single-transaction --quick \
           "$db" > "/workspace/$out"
-      ' sh "$db" "$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
 
     echo "OK: data dumped '$db' -> ./$out" >&2
     ;;
 
   *)
-    # Raw mode: stream to stdout. Good for: mysqldump db > file.sql
-    # Uses the running container (no mounts needed).
-    local flags
-    flags="$(is_tty)"
-    exec docker exec $flags "$SERVICE" sh -lc '
-        MYSQL_PWD="${MYSQL_ROOT_PASSWORD-}" exec mysqldump -uroot "$@"
+    # Raw mode: stream to stdout (no mounts)
+    # Uses defaults file inside the running container (no password in argv)
+    exec docker exec -i "$SERVICE" sh -lc '
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=${MYSQL_ROOT_PASSWORD-}
+host=127.0.0.1
+port=${MYSQL_PORT-3306}
+protocol=TCP
+EOF
+        exec mysqldump --defaults-extra-file="$cf" "$@"
       ' sh "$@"
     ;;
   esac

@@ -1,42 +1,186 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# — load .env (skip UID) —
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../docker/.env"
-if [[ -r "$ENV_FILE" ]]; then
-  set -o allexport
-  source <(grep -v '^UID=' "$ENV_FILE")
-  set +o allexport
-else
-  echo "Warning: .env file not found at $ENV_FILE" >&2
-fi
-
-pg_restore() {
-  local login=false
-  [[ "${1:-}" == "--login" ]] && login=true && shift
-
-  local SERVICE="POSTGRESQL"
-  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE"; then
-    echo "Error: '$SERVICE' not running." >&2
-    return 1
-  fi
-
-  local FLAGS=$([[ -t 0 ]] && echo -it || echo -i)
-  FLAGS+=" --rm -v $PWD:/workspace -w /workspace"
-
-  local ARGS=()
-  if $login; then
-    ARGS+=( -h127.0.0.1 -p"$POSTGRESQL_PORT" -U"$POSTGRESQL_USER" )
-    ARGS+=( -d "${POSTGRESQL_DATABASE:-}" )
-    [[ $# -gt 0 ]] && ARGS+=( "$@" )
-  else
-    ARGS+=( "$@" )
-  fi
-
-  exec docker exec $FLAGS \
-    -e PGPASSWORD="$POSTGRESQL_PASSWORD" \
-    "$SERVICE" pg_restore "${ARGS[@]}"
+die() {
+  echo "Error: $*" >&2
+  exit 1
 }
 
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && pg_restore "$@"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/docker/.env"
+
+# Optional host fallback: only service name / port override (safe whitelist)
+if [[ -r "$ENV_FILE" ]]; then
+  while IFS='=' read -r k v; do
+    [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
+    k="${k//[[:space:]]/}"
+    case "$k" in
+    POSTGRESQL_CONTAINER | POSTGRES_CONTAINER | POSTGRES_PORT_IN) ;;
+    *) continue ;;
+    esac
+    v="${v%$'\r'}"
+    v="${v#\"}"
+    v="${v%\"}"
+    v="${v#\'}"
+    v="${v%\'}"
+    export "$k=$v"
+  done <"$ENV_FILE"
+fi
+
+SERVICE="${POSTGRESQL_CONTAINER:-${POSTGRES_CONTAINER:-POSTGRESQL}}"
+POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-}"
+
+require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
+is_tty() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
+
+# POSIX-safe env read from container
+cenv() {
+  local key="$1"
+  docker exec -i "$SERVICE" sh -lc 'eval "printf %s \"\${$1-}\""' sh "$key" 2>/dev/null || true
+}
+cenv_any() {
+  local v key
+  for key in "$@"; do
+    v="$(cenv "$key")"
+    [[ -n "${v:-}" ]] && {
+      printf "%s" "$v"
+      return 0
+    }
+  done
+  return 1
+}
+infer_port() {
+  [[ -n "${POSTGRES_PORT_IN:-}" ]] && return 0
+  POSTGRES_PORT_IN="$(cenv_any POSTGRES_PORT PGPORT || true)"
+  POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-5432}"
+}
+
+# detect if args already specify target db
+has_db_flag() {
+  local a
+  for a in "$@"; do
+    [[ "$a" == "-d" || "$a" == "--dbname" ]] && return 0
+  done
+  return 1
+}
+
+usage() {
+  cat >&2 <<'TXT'
+pg_restore (docker wrapper)
+
+Shortcuts:
+  pg_restore restore <dumpfile> [db]           # restores into db (auto create-db)
+  pg_restore list <dumpfile>                   # show contents
+  pg_restore status
+
+Raw mode:
+  pg_restore [pg_restore args...]              # executed inside container
+
+Notes:
+- Best with pg_dump custom format (-Fc). For plain .sql use: psql import file.sql
+- No mounts by default; for restore/list we stream the file via stdin into container.
+
+Examples:
+  pg_restore restore backup.dump mydb
+  pg_restore list backup.dump
+  pg_restore -d mydb --clean --if-exists backup.dump
+TXT
+}
+
+main() {
+  case "${1:-}" in help | -h | --help | "") [[ "${1:-}" != "" ]] && {
+    usage
+    exit 0
+  } ;; esac
+
+  require_container
+  infer_port
+
+  local PGUSER PGPASS PGDB
+  PGUSER="$(cenv_any POSTGRES_USER PGUSER || true)"
+  PGPASS="$(cenv_any POSTGRES_PASSWORD PGPASSWORD || true)"
+  PGDB="$(cenv_any POSTGRES_DATABASE POSTGRES_DB PGDATABASE || true)"
+  [[ -n "${PGUSER:-}" ]] || PGUSER="postgres"
+  [[ -n "${PGPASS:-}" ]] || PGPASS="postgres"
+
+  local cmd="${1:-}"
+  case "$cmd" in
+  "" | -h | --help | help)
+    usage
+    exit 0
+    ;;
+  status)
+    docker ps --filter "name=^/${SERVICE}$" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    exit 0
+    ;;
+  esac
+
+  # Helper: ensure db exists (safe, non-transactional)
+  ensure_db() {
+    local db="$1"
+    [[ "$db" =~ ^[A-Za-z0-9_]+$ ]] || die "invalid db name '$db' (allowed: A-Z a-z 0-9 _)"
+    local exists
+    exists="$(docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d postgres \
+      -tA -v ON_ERROR_STOP=1 \
+      -c "SELECT 1 FROM pg_database WHERE datname = '$db' LIMIT 1;" 2>/dev/null || true)"
+    if [[ "$exists" != "1" ]]; then
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d postgres \
+        -v ON_ERROR_STOP=1 \
+        -c "CREATE DATABASE \"$db\" OWNER \"$PGUSER\";"
+    fi
+  }
+
+  case "$cmd" in
+  list)
+    shift
+    local file="${1:-}"
+    [[ -n "$file" ]] || die "list requires a dump file (.dump/.tar/.dir)."
+    [[ -f "$file" ]] || die "file not found: $file"
+
+    # Stream file to container; pg_restore supports reading archive from stdin with - (works for custom/tar)
+    cat "$file" | docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      pg_restore -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -l -
+    ;;
+
+  restore)
+    shift
+    local file="${1:-}"
+    shift || true
+    [[ -n "$file" ]] || die "restore requires a dump file (.dump/.tar/.dir)."
+    [[ -f "$file" ]] || die "file not found: $file"
+
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "restore requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+
+    ensure_db "$db"
+
+    # Stream archive into pg_restore; use --clean/--if-exists for idempotence
+    # (user can override by using raw mode)
+    cat "$file" | docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      pg_restore -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+      --clean --if-exists --no-owner --no-privileges -
+    echo "OK: restored '$file' -> db '$db'" >&2
+    ;;
+
+  *)
+    # Raw mode:
+    # If last arg is a local file, pg_restore will try to open it INSIDE container (and fail).
+    # So raw mode expects the file to be accessible in container or you stream it manually.
+    # Prefer: pg_restore restore <file> [db]
+    local flags
+    flags="$(is_tty)"
+    if has_db_flag "$@"; then
+      exec docker exec $flags -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_restore -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" "$@"
+    else
+      # if no -d provided, attach default db only if user is doing a restore into db
+      exec docker exec $flags -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_restore -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" "$@"
+    fi
+    ;;
+  esac
+}
+
+main "$@"

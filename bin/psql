@@ -1,64 +1,307 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ————————————————————————————————————————————————
-# 0) Load docker/.env (skip readonly UID)
-# ————————————————————————————————————————————————
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../docker/.env"
+die(){ echo "Error: $*" >&2; exit 1; }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo layout:
+#   <root>/bin/psql
+#   <root>/docker/.env
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/docker/.env"
+
+# Safe host .env load (whitelist only; optional fallback)
 if [[ -r "$ENV_FILE" ]]; then
-  set -o allexport
-  # shellcheck disable=SC1090
-  source <(grep -v '^UID=' "$ENV_FILE")
-  set +o allexport
-else
-  echo "Warning: .env file not found at $ENV_FILE" >&2
+  while IFS='=' read -r k v; do
+    [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
+    k="${k//[[:space:]]/}"
+    case "$k" in
+    POSTGRES_CONTAINER|POSTGRESQL_CONTAINER|POSTGRES_PORT_IN) ;;
+    *) continue ;;
+    esac
+    v="${v%$'\r'}"
+    v="${v#\"}"; v="${v%\"}"
+    v="${v#\'}"; v="${v%\'}"
+    export "$k=$v"
+  done < "$ENV_FILE"
 fi
 
-# ————————————————————————————————————————————————
-# psql(): wrapper around psql inside Docker
-#    --login : pull creds from .env
-# ————————————————————————————————————————————————
-psql() {
-  local login=false
-  if [[ "${1:-}" == "--login" ]]; then
-    login=true
-    shift
-  fi
+SERVICE="${POSTGRESQL_CONTAINER:-${POSTGRES_CONTAINER:-POSTGRESQL}}"
+POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-}"
 
-  local SERVICE_NAME="POSTGRESQL"
+usage(){
+  cat >&2 <<'TXT'
+Usage:
+  psql [psql args...]
+  psql create-db [db_name]
+  psql import <file.sql|file.sql.gz> [db_name]
+  psql export [db_name] [out.sql|out.sql.gz]
+  psql dump   [db_name] [out.sql|out.sql.gz]     # alias of export
+  psql dump-all [out.sql|out.sql.gz]
+  psql schema [db_name] [out.sql|out.sql.gz]     # schema-only
+  psql data   [db_name] [out.sql|out.sql.gz]     # data-only
+  psql dbs
+  psql tables [db_name]
+  psql status
 
-  # 1) ensure container is running
-  if ! docker ps --format '{{.Names}}' | grep -qx "$SERVICE_NAME"; then
-    echo "Error: container '$SERVICE_NAME' is not running." >&2
-    return 1
-  fi
-
-  # 2) detect TTY vs non-TTY
-  local FLAGS=$([[ -t 0 ]] && echo -it || echo -i)
-  FLAGS+=" --rm -v $PWD:/workspace -w /workspace"
-
-  # 3) build client args
-  local ARGS=()
-  if [[ "$login" == true ]]; then
-    ARGS+=(-h127.0.0.1 -p"$POSTGRESQL_PORT" -U"$POSTGRESQL_USER")
-    [[ -n "${POSTGRESQL_DATABASE:-}" ]] && ARGS+=(-d "$POSTGRESQL_DATABASE")
-    ARGS+=("$@")
-  else
-    ARGS+=("$@")
-  fi
-
-  # 4) pass the password into the container via env
-  exec docker exec $FLAGS \
-       -e PGPASSWORD="$POSTGRESQL_PASSWORD" \
-       "$SERVICE_NAME" \
-       psql "${ARGS[@]}"
+Convenience:
+  psql                      -> interactive prompt (default DB if available)
+  psql "select 1"           -> runs on default DB
+  psql mydb "select 1"      -> runs on mydb
+  cat file.sql | psql       -> runs on default DB (stdin)
+TXT
 }
 
-# ————————————————————————————————————————————————
-# if script is run (not sourced), invoke the function
-# ————————————————————————————————————————————————
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  psql "$@"
-fi
+# Help should never touch docker
+case "${1:-}" in help|-h|--help) usage; exit 0;; esac
+
+require_container(){ docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
+is_tty(){ [[ -t 0 ]] && echo "-it" || echo "-i"; }
+
+# POSIX-safe env read from container (NO bash indirect expansion)
+cenv(){
+  local key="$1"
+  docker exec -i "$SERVICE" sh -lc 'eval "printf %s \"\${$1-}\""' sh "$key" 2>/dev/null || true
+}
+
+cenv_any(){
+  local v key
+  for key in "$@"; do
+    v="$(cenv "$key")"
+    [[ -n "${v:-}" ]] && { printf "%s" "$v"; return 0; }
+  done
+  return 1
+}
+
+infer_port(){
+  [[ -n "${POSTGRES_PORT_IN:-}" ]] && return 0
+  POSTGRES_PORT_IN="$(cenv_any POSTGRES_PORT PGPORT || true)"
+  POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-5432}"
+}
+
+has_psql_cmd_flag(){
+  local a
+  for a in "$@"; do
+    [[ "$a" == "-c" || "$a" == "--command" || "$a" == "-f" || "$a" == "--file" ]] && return 0
+  done
+  return 1
+}
+
+looks_like_sql(){
+  local s="$1"
+  [[ "$s" == *";"* || "$s" == *" "* ]] && return 0
+  [[ "$s" =~ ^[[:space:]]*(select|insert|update|delete|with|show|describe|desc|explain|set|create|alter|drop|truncate|grant|revoke)[[:space:]] ]] && return 0
+  return 1
+}
+
+psql_exec(){
+  local flags; flags="$(is_tty)"
+  local db="$1" user="$2" pass="$3"; shift 3
+  exec docker exec $flags -e "PGPASSWORD=$pass" "$SERVICE" \
+    psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$user" ${db:+-d "$db"} "$@"
+}
+
+main(){
+  require_container
+  infer_port
+
+  # Pull creds ONLY from container env (preferred)
+  # Your env: POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE
+  local PGUSER PGPASS PGDB
+  PGUSER="$(cenv_any POSTGRES_USER PGUSER || true)"
+  PGPASS="$(cenv_any POSTGRES_PASSWORD PGPASSWORD || true)"
+  PGDB="$(cenv_any POSTGRES_DATABASE POSTGRES_DB PGDATABASE || true)"
+
+  [[ -n "${PGUSER:-}" ]] || PGUSER="postgres"
+  [[ -n "${PGPASS:-}" ]] || PGPASS="postgres"
+  # PGDB may be empty; that's okay
+
+  # stdin mode: cat file.sql | psql
+  if [[ $# -eq 0 && ! -t 0 ]]; then
+    [[ -n "${PGDB:-}" ]] || die "No default database set (POSTGRES_DATABASE/POSTGRES_DB)."
+    exec docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$PGDB" -v ON_ERROR_STOP=1
+  fi
+
+  # no args => interactive prompt
+  if [[ $# -eq 0 ]]; then
+    psql_exec "${PGDB:-}" "$PGUSER" "$PGPASS"
+    exit 0
+  fi
+
+  local cmd="${1:-}"
+  case "$cmd" in
+  status)
+    docker ps --filter "name=^/${SERVICE}$" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    exit 0
+    ;;
+  esac
+
+  case "$cmd" in
+  dbs)
+    psql_exec "${PGDB:-postgres}" "$PGUSER" "$PGPASS" -v ON_ERROR_STOP=1 -c '\l'
+    ;;
+
+  tables)
+    shift
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "tables requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    psql_exec "$db" "$PGUSER" "$PGPASS" -v ON_ERROR_STOP=1 -c '\dt'
+    ;;
+
+  create-db)
+    shift
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "create-db requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+
+    # db name must be a safe identifier for this shortcut (avoid SQL injection / weird quoting edge cases)
+    [[ "$db" =~ ^[A-Za-z0-9_]+$ ]] || die "invalid db name '$db' (allowed: A-Z a-z 0-9 _)"
+
+    # 1) existence check (safe + fast)
+    local exists
+    exists="$(docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d postgres \
+      -tA -v ON_ERROR_STOP=1 -v db="$db" \
+      -c "SELECT 1 FROM pg_database WHERE datname = :'db' LIMIT 1;" 2>/dev/null || true)"
+
+    if [[ "$exists" == "1" ]]; then
+      echo "OK: database '$db' already exists" >&2
+      exit 0
+    fi
+
+    # 2) CREATE DATABASE must be top-level (no DO/function). Use identifier quotes.
+    docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+      psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d postgres \
+      -v ON_ERROR_STOP=1 \
+      -c "CREATE DATABASE \"$db\" OWNER \"$PGUSER\";"
+
+    echo "OK: database '$db' created (owner: $PGUSER)" >&2
+    ;;
+
+  import)
+    shift
+    local file="${1:-}"; shift || true
+    [[ -n "$file" ]] || die "import requires a file path (.sql or .sql.gz)."
+    [[ -f "$file" ]] || die "file not found: $file"
+
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "import requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+
+    if [[ "$file" == *.gz ]]; then
+      gunzip -c "$file" | docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" -v ON_ERROR_STOP=1
+    else
+      cat "$file" | docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        psql -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" -v ON_ERROR_STOP=1
+    fi
+    echo "OK: imported '$file' -> db '$db'" >&2
+    ;;
+
+  export|dump)
+    shift
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "export requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    local out="${2:-${db}.sql}"
+
+    if [[ "$out" == *.gz ]]; then
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --no-owner --no-privileges | gzip -c > "$out"
+    else
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --no-owner --no-privileges > "$out"
+    fi
+    echo "OK: dumped '$db' -> ./$out" >&2
+    ;;
+
+  dump-all)
+    shift
+    local out="${1:-all.sql}"
+
+    if [[ "$out" == *.gz ]]; then
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" | gzip -c > "$out"
+    else
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" > "$out"
+    fi
+    echo "OK: dumped all databases -> ./$out" >&2
+    ;;
+
+  schema)
+    shift
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "schema requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    local out="${2:-${db}.schema.sql}"
+
+    if [[ "$out" == *.gz ]]; then
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --schema-only --no-owner --no-privileges | gzip -c > "$out"
+    else
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --schema-only --no-owner --no-privileges > "$out"
+    fi
+    echo "OK: schema dumped '$db' -> ./$out" >&2
+    ;;
+
+  data)
+    shift
+    local db="${1:-$PGDB}"
+    [[ -n "$db" ]] || die "data requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    local out="${2:-${db}.data.sql}"
+
+    if [[ "$out" == *.gz ]]; then
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --data-only --no-owner --no-privileges | gzip -c > "$out"
+    else
+      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
+        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
+        --data-only --no-owner --no-privileges > "$out"
+    fi
+    echo "OK: data dumped '$db' -> ./$out" >&2
+    ;;
+
+  *)
+    shift 0
+
+    # If user explicitly uses -c/-f etc, passthrough
+    if has_psql_cmd_flag "$@"; then
+      psql_exec "${PGDB:-}" "$PGUSER" "$PGPASS" "$@"
+      exit 0
+    fi
+
+    # SQL convenience
+    if [[ $# -eq 1 ]] && looks_like_sql "$1"; then
+      [[ -n "${PGDB:-}" ]] || die "No default database set (POSTGRES_DATABASE/POSTGRES_DB). Provide db: psql <db> \"SQL...\""
+      psql_exec "$PGDB" "$PGUSER" "$PGPASS" -v ON_ERROR_STOP=1 -c "$1"
+      exit 0
+    fi
+
+    if [[ $# -ge 2 ]] && [[ "$1" =~ ^[A-Za-z0-9_]+$ ]] && looks_like_sql "$2"; then
+      local db="$1"; shift
+      local sql="$*"
+      psql_exec "$db" "$PGUSER" "$PGPASS" -v ON_ERROR_STOP=1 -c "$sql"
+      exit 0
+    fi
+
+    # passthrough; if no -d given, attach default db
+    local has_db=false a
+    for a in "$@"; do
+      [[ "$a" == "-d" || "$a" == "--dbname" ]] && has_db=true && break
+    done
+
+    if [[ "$has_db" == false && -n "${PGDB:-}" ]]; then
+      psql_exec "$PGDB" "$PGUSER" "$PGPASS" "$@"
+    else
+      psql_exec "" "$PGUSER" "$PGPASS" "$@"
+    fi
+    ;;
+  esac
+}
+
+main "$@"
