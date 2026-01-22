@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die(){ echo "Error: $*" >&2; exit 1; }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo layout:
+#   <root>/bin/mariadbdump
+#   <root>/docker/.env
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/docker/.env"
+
+# Optional: whitelist-load only what we need from host env (safe)
+if [[ -r "$ENV_FILE" ]]; then
+  while IFS='=' read -r k v; do
+    [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
+    k="${k//[[:space:]]/}"
+    case "$k" in
+    MARIADB_CONTAINER|MARIADB_PORT_IN|MARIADB_ROOT_PASSWORD|MARIADB_DATABASE|MYSQL_ROOT_PASSWORD|MYSQL_DATABASE) ;;
+    *) continue ;;
+    esac
+    v="${v%$'\r'}"
+    v="${v#\"}"; v="${v%\"}"
+    v="${v#\'}"; v="${v%\'}"
+    export "$k=$v"
+  done <"$ENV_FILE"
+fi
+
+SERVICE="${MARIADB_CONTAINER:-MARIADB}"
+MARIADB_PORT_IN="${MARIADB_PORT_IN:-}"
+
+# Faster check
+require_container(){ docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
+
+# Best source of truth: env vars inside running container
+cenv(){
+  local key="$1"
+  docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
+}
+
+db_image(){
+  docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || die "failed to inspect image for '$SERVICE'."
+}
+
+infer_port(){
+  [[ -n "${MARIADB_PORT_IN:-}" ]] && return 0
+  MARIADB_PORT_IN="$(cenv MARIADB_PORT || true)"
+  [[ -n "$MARIADB_PORT_IN" ]] || MARIADB_PORT_IN="$(cenv MYSQL_PORT || true)"
+  MARIADB_PORT_IN="${MARIADB_PORT_IN:-3306}"
+}
+
+# Prefer mariadb-dump; fallback mysqldump
+dump_bin(){
+  docker exec -i "$SERVICE" sh -lc '
+    command -v mariadb-dump >/dev/null 2>&1 && { echo mariadb-dump; exit 0; }
+    command -v mysqldump   >/dev/null 2>&1 && { echo mysqldump; exit 0; }
+    exit 1
+  ' 2>/dev/null || die "no mariadb-dump/mysqldump binary found in container '$SERVICE'."
+}
+
+# Ephemeral client with dynamic mount (only for file output)
+run_client_mount_pwd(){
+  local image="$1"; shift
+  docker run --rm \
+    -v "$PWD":/workspace -w /workspace \
+    --network "container:$SERVICE" \
+    "$image" "$@"
+}
+
+usage(){
+  cat >&2 <<'TXT'
+Usage:
+  mariadbdump dump [db] [out.sql]
+  mariadbdump dump-all [out.sql]
+  mariadbdump schema [db] [out.sql]       # no data
+  mariadbdump data [db] [out.sql]         # no schema
+  mariadbdump [raw dump args...]          # streams to stdout (no file writing)
+
+Examples:
+  mariadbdump dump localdb localdb.sql
+  mariadbdump schema localdb schema.sql
+  mariadbdump data localdb data.sql
+  mariadbdump dump-all all.sql
+  mariadbdump localdb > localdb.sql
+TXT
+}
+
+main(){
+  require_container
+  infer_port
+
+  local ROOT_PW DB IMAGE DUMPBIN
+  ROOT_PW="$(cenv MARIADB_ROOT_PASSWORD || true)"
+  [[ -n "$ROOT_PW" ]] || ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD || true)"
+  DB="$(cenv MARIADB_DATABASE || true)"
+  [[ -n "$DB" ]] || DB="$(cenv MYSQL_DATABASE || true)"
+
+  IMAGE="$(db_image)"
+  DUMPBIN="$(dump_bin)"
+
+  # Fallback to host env (optional)
+  [[ -n "$ROOT_PW" ]] || ROOT_PW="${MARIADB_ROOT_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}"
+  [[ -n "$DB" ]] || DB="${MARIADB_DATABASE:-${MYSQL_DATABASE:-}}"
+
+  local cmd="${1:-}"
+  case "$cmd" in
+  ""|-h|--help|help) usage; exit 0 ;;
+  esac
+
+  case "$cmd" in
+  dump)
+    shift
+    local db="${1:-$DB}"
+    [[ -n "$db" ]] || die "dump requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    local out="${2:-${db}.sql}"
+
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"; dumpbin="$5"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        "$dumpbin" --defaults-extra-file="$cf" \
+          --single-transaction --quick --routines --events \
+          "$db" > "/workspace/$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MARIADB_PORT_IN" "$DUMPBIN"
+
+    echo "OK: dumped '$db' -> ./$out" >&2
+    ;;
+
+  dump-all)
+    shift
+    local out="${1:-all.sql}"
+
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        out="$1"; pw="$2"; port="$3"; dumpbin="$4"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        "$dumpbin" --defaults-extra-file="$cf" \
+          --single-transaction --quick --routines --events \
+          --all-databases > "/workspace/$out"
+      ' sh "$out" "$ROOT_PW" "$MARIADB_PORT_IN" "$DUMPBIN"
+
+    echo "OK: dumped all databases -> ./$out" >&2
+    ;;
+
+  schema)
+    shift
+    local db="${1:-$DB}"
+    [[ -n "$db" ]] || die "schema requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    local out="${2:-${db}.schema.sql}"
+
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"; dumpbin="$5"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        "$dumpbin" --defaults-extra-file="$cf" \
+          --no-data --routines --events \
+          "$db" > "/workspace/$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MARIADB_PORT_IN" "$DUMPBIN"
+
+    echo "OK: schema dumped '$db' -> ./$out" >&2
+    ;;
+
+  data)
+    shift
+    local db="${1:-$DB}"
+    [[ -n "$db" ]] || die "data requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    local out="${2:-${db}.data.sql}"
+
+    run_client_mount_pwd "$IMAGE" sh -lc '
+        db="$1"; out="$2"; pw="$3"; port="$4"; dumpbin="$5"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=$pw
+host=127.0.0.1
+port=$port
+protocol=TCP
+EOF
+        "$dumpbin" --defaults-extra-file="$cf" \
+          --no-create-info --skip-triggers \
+          --single-transaction --quick \
+          "$db" > "/workspace/$out"
+      ' sh "$db" "$out" "$ROOT_PW" "$MARIADB_PORT_IN" "$DUMPBIN"
+
+    echo "OK: data dumped '$db' -> ./$out" >&2
+    ;;
+
+  *)
+  # Raw mode: stream to stdout (no mounts)
+  # Uses defaults file inside the running container (no password in argv)
+    exec docker exec -i "$SERVICE" sh -lc '
+        dumpbin="$(command -v mariadb-dump >/dev/null 2>&1 && echo mariadb-dump || echo mysqldump)"
+        umask 077
+        cf="$(mktemp)"; trap "rm -f $cf" EXIT
+        cat >"$cf" <<EOF
+[client]
+user=root
+password=${MARIADB_ROOT_PASSWORD-${MYSQL_ROOT_PASSWORD-}}
+host=127.0.0.1
+port=${MARIADB_PORT-${MYSQL_PORT-3306}}
+protocol=TCP
+EOF
+        exec "$dumpbin" --defaults-extra-file="$cf" "$@"
+      ' sh "$@"
+    ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

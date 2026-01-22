@@ -746,7 +746,7 @@ main() {
   }
 
   case "${1,,}" in
-  php | mariadb | mariadb-dump | mysql | psql | composer)
+  php | mariadb | mysql | psql | composer)
     exec "$DIR/bin/$1" "${@:2}"
     ;;
   pg_restore | pg-restore | pgrestore)
@@ -754,6 +754,9 @@ main() {
     ;;
   pg_dump | pgdump | pg-dump)
     exec "$DIR/bin/pg_dump" "${@:2}"
+    ;;
+  mariadbdump | mariadb-dump | mariadb_dump)
+    exec "$DIR/bin/mariadbdump" "${@:2}"
     ;;
   mysqldump | mysql-dump | mysql_dump)
     exec "$DIR/bin/mysqldump" "${@:2}"
