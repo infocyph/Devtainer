@@ -12,6 +12,11 @@ CFG="$DIR/docker"
 ENV_MAIN="$DIR/.env"
 ENV_DOCKER="$CFG/.env"
 COMPOSE_FILE="$CFG/compose/main.yaml"
+# Windows wrapper support: server.bat passes caller dir here
+if [[ "${1:-}" == "--__win_workdir" ]]; then
+  export WORKDIR_WIN="${2:-}"
+  shift 2
+fi
 
 COLOR() { printf '\033[%sm' "$1"; }
 RED=$(COLOR '0;31') GREEN=$(COLOR '0;32') CYAN=$(COLOR '0;36')

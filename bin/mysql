@@ -1,44 +1,98 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die(){ echo "Error: $*" >&2; exit 1; }
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Repo layout:
-#   <root>/bin/mysql        (this script)
-#   <root>/docker/.env
-# ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
-# 1) Safer .env load: whitelist only what we need
+is_msys() {
+  case "${OSTYPE:-}" in
+  msys* | cygwin*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+msys_no_pathconv() {
+  if is_msys; then
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL='*'
+  fi
+}
+
+resolve_mount_root() {
+  local posix_root="" host_path=""
+
+  if [[ -n "${WORKDIR:-}" && -d "${WORKDIR}" ]]; then
+    posix_root="$WORKDIR"
+  fi
+
+  if [[ -z "$posix_root" && -n "${WORKDIR_WIN:-}" ]]; then
+    if command -v cygpath >/dev/null 2>&1; then
+      posix_root="$(cygpath -u "$WORKDIR_WIN" 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "$posix_root" && -n "${WORKING_DIR:-}" ]]; then
+    if [[ -d "$WORKING_DIR" ]]; then
+      posix_root="$WORKING_DIR"
+    elif command -v cygpath >/dev/null 2>&1; then
+      posix_root="$(cygpath -u "$WORKING_DIR" 2>/dev/null || true)"
+    fi
+  fi
+
+  [[ -n "$posix_root" && -d "$posix_root" ]] || posix_root="$PWD"
+  posix_root="$(cd "$posix_root" && pwd)"
+
+  if is_msys && command -v cygpath >/dev/null 2>&1; then
+    host_path="$(cygpath -w "$posix_root")"
+  else
+    host_path="$posix_root"
+  fi
+
+  case "$host_path" in
+  *"Program Files/Git/workspace"* | *"Program Files\\Git\\workspace"*)
+    if is_msys && command -v cygpath >/dev/null 2>&1; then
+      host_path="$(cygpath -w "$posix_root")"
+    fi
+    ;;
+  esac
+
+  MOUNT_POSIX_ROOT="$posix_root"
+  MOUNT_HOST_PATH="$host_path"
+}
+
+MOUNT_POSIX_ROOT=""
+MOUNT_HOST_PATH=""
+
 if [[ -r "$ENV_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
     k="${k//[[:space:]]/}"
     case "$k" in
-    MYSQL_CONTAINER|MYSQL_PORT_IN) ;;
+    MYSQL_CONTAINER | MYSQL_PORT_IN | WORKING_DIR) ;;
     *) continue ;;
     esac
     v="${v%$'\r'}"
-    v="${v#\"}"; v="${v%\"}"
-    v="${v#\'}"; v="${v%\'}"
+    v="${v#\"}"
+    v="${v%\"}"
+    v="${v#\'}"
+    v="${v%\'}"
     export "$k=$v"
-  done < "$ENV_FILE"
+  done <"$ENV_FILE"
 fi
 
 SERVICE="${MYSQL_CONTAINER:-MYSQL}"
-MYSQL_PORT_IN="${MYSQL_PORT_IN:-}" # inferred later if empty
+MYSQL_PORT_IN="${MYSQL_PORT_IN:-}"
 
-# 6) Faster container check: inspect instead of docker ps | grep
-require_container() {
-  docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."
-}
+require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
 
-is_tty(){ [[ -t 0 ]] && echo "-it" || echo "-i"; }
-is_interactive_stdin(){ [[ -t 0 ]] && echo "-it" || echo "-i"; }
+is_tty() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
+is_interactive_stdin() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
 
-# Read env var from inside the running mysql container (no host .env required)
 cenv() {
   local key="$1"
   docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
@@ -48,9 +102,9 @@ mysql_image() {
   docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || die "failed to inspect image for '$SERVICE'."
 }
 
-# 3) Safer auth: use defaults file (no MYSQL_PWD)
 mysql_exec_root() {
-  local flags; flags="$(is_tty)"
+  local flags
+  flags="$(is_tty)"
   exec docker exec $flags "$SERVICE" sh -lc '
     umask 077
     f="$(mktemp)"; trap "rm -f $f" EXIT
@@ -59,7 +113,7 @@ mysql_exec_root() {
 user=root
 password=${MYSQL_ROOT_PASSWORD-}
 host=127.0.0.1
-port=${MYSQL_PORT-3306}
+port=${MYSQL_PORT_IN-3306}
 protocol=TCP
 EOF
     exec mysql --defaults-extra-file="$f" "$@"
@@ -67,7 +121,8 @@ EOF
 }
 
 mysql_exec_user() {
-  local flags; flags="$(is_tty)"
+  local flags
+  flags="$(is_tty)"
   exec docker exec $flags "$SERVICE" sh -lc '
     umask 077
     f="$(mktemp)"; trap "rm -f $f" EXIT
@@ -76,40 +131,37 @@ mysql_exec_user() {
 user=${MYSQL_USER-}
 password=${MYSQL_PASSWORD-}
 host=127.0.0.1
-port=${MYSQL_PORT-3306}
+port=${MYSQL_PORT_IN-3306}
 protocol=TCP
 EOF
     exec mysql --defaults-extra-file="$f" "$@"
   ' sh "$@"
 }
 
-# Convert host path -> /workspace/<relative-to-PWD> (file must be under PWD)
 to_workspace_path() {
   local host_path="$1"
   [[ -f "$host_path" ]] || die "file not found: $host_path"
 
-  local abs cwd rel
-  cwd="$(cd "$PWD" && pwd)"
+  local abs rel
   abs="$(cd "$(dirname "$host_path")" && pwd)/$(basename "$host_path")"
 
   if command -v python3 >/dev/null 2>&1; then
     rel="$(
-      python3 - "$cwd" "$abs" <<'PY' 2>/dev/null || true
+      python3 - "$MOUNT_POSIX_ROOT" "$abs" <<'PY' 2>/dev/null || true
 import os,sys
-cwd=sys.argv[1]
-p=sys.argv[2]
+root=sys.argv[1]; p=sys.argv[2]
 try:
-  r=os.path.relpath(p,cwd)
+  r=os.path.relpath(p,root)
   print(r)
 except Exception:
   pass
 PY
     )"
   else
-    [[ "$abs" == "$cwd/"* ]] && rel="${abs#"$cwd/"}" || rel=""
+    [[ "$abs" == "$MOUNT_POSIX_ROOT/"* ]] && rel="${abs#"$MOUNT_POSIX_ROOT/"}" || rel=""
   fi
 
-  [[ -n "${rel:-}" && "$rel" != /* && "$rel" != ..* ]] || die "file must be under current directory: $host_path"
+  [[ -n "${rel:-}" && "$rel" != /* && "$rel" != ..* ]] || die "file must be under current mounted directory: $host_path"
   echo "/workspace/$rel"
 }
 
@@ -128,21 +180,22 @@ looks_like_sql() {
   return 1
 }
 
-# 2) Avoid hardcoding port: infer internal port (fallback 3306)
 infer_port() {
   [[ -n "${MYSQL_PORT_IN:-}" ]] && return 0
   MYSQL_PORT_IN="$(cenv MYSQL_PORT || true)"
   MYSQL_PORT_IN="${MYSQL_PORT_IN:-3306}"
 }
 
-# 3) Safer auth for ephemeral client: defaults file
 run_client() {
   local image="$1" root_pw="$2" user="$3" user_pw="$4"
   shift 4
-  local flags; flags="$(is_interactive_stdin)"
+  local flags
+  flags="$(is_interactive_stdin)"
+
+  msys_no_pathconv
 
   docker run --rm $flags \
-    -v "$PWD":/workspace -w /workspace \
+    -v "$MOUNT_HOST_PATH":/workspace -w /workspace \
     --network "container:$SERVICE" \
     -e MYSQL_ROOT_PASSWORD="$root_pw" \
     -e MYSQL_USER="$user" \
@@ -158,36 +211,32 @@ Usage:
   mysql create-db [db_name]
   mysql import <file.sql|file.sql.gz> [db_name]
   mysql export [db_name] [out.sql]
-  mysql dump   [db_name] [out.sql]     # alias of export
+  mysql dump   [db_name] [out.sql]
   mysql dbs
   mysql tables [db_name]
   mysql status
-
-Behavior:
-- No args: interactive mysql prompt (root by default)
-- Stdin pipe: `cat file.sql | mysql` runs against default DB (MYSQL_DATABASE)
-- File ops (import/export): ephemeral container with -v "$PWD":/workspace (dynamic mount)
-Notes:
-- import file must be inside current directory (because only $PWD is mounted)
 TXT
 }
 
 main() {
   require_container
+  infer_port
+  resolve_mount_root
+  msys_no_pathconv
 
   local as_user=false
-  if [[ "${1:-}" == "--user" ]]; then as_user=true; shift; fi
+  if [[ "${1:-}" == "--user" ]]; then
+    as_user=true
+    shift
+  fi
 
-  # Defaults from container env (cheap + needed for several modes)
   local ROOT_PW USER USER_PW DEF_DB IMAGE
-  ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD)"
-  USER="$(cenv MYSQL_USER)"
-  USER_PW="$(cenv MYSQL_PASSWORD)"
-  DEF_DB="$(cenv MYSQL_DATABASE)"
+  ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD || true)"
+  USER="$(cenv MYSQL_USER || true)"
+  USER_PW="$(cenv MYSQL_PASSWORD || true)"
+  DEF_DB="$(cenv MYSQL_DATABASE || true)"
   IMAGE="$(mysql_image)"
-  infer_port
 
-  # 5) stdin support: cat query.sql | server mysql
   if [[ $# -eq 0 && ! -t 0 ]]; then
     [[ -n "${DEF_DB:-}" ]] || die "No default database set in container (MYSQL_DATABASE)."
     if [[ "$as_user" == true ]]; then
@@ -223,7 +272,6 @@ EOF
     fi
   fi
 
-  # No args => interactive mysql shell
   if [[ $# -eq 0 ]]; then
     if [[ "$as_user" == true ]]; then mysql_exec_user; else mysql_exec_root; fi
     exit 0
@@ -231,7 +279,10 @@ EOF
 
   local cmd="${1:-}"
   case "$cmd" in
-  help|-h|--help) usage; exit 0 ;;
+  help | -h | --help)
+    usage
+    exit 0
+    ;;
   status)
     docker ps --filter "name=^/${SERVICE}$" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     exit 0
@@ -239,37 +290,27 @@ EOF
   esac
 
   case "$cmd" in
-  # 4) Useful shortcuts
   dbs)
-    if [[ "$as_user" == true ]]; then
-      mysql_exec_user -e "SHOW DATABASES;"
-    else
-      mysql_exec_root -e "SHOW DATABASES;"
-    fi
+    if [[ "$as_user" == true ]]; then mysql_exec_user -e "SHOW DATABASES;"; else mysql_exec_root -e "SHOW DATABASES;"; fi
     ;;
 
   tables)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "tables requires a db name (or set MYSQL_DATABASE in container)."
-    if [[ "$as_user" == true ]]; then
-      mysql_exec_user "$db" -e "SHOW TABLES;"
-    else
-      mysql_exec_root "$db" -e "SHOW TABLES;"
-    fi
+    [[ -n "$db" ]] || die "tables requires a db name."
+    if [[ "$as_user" == true ]]; then mysql_exec_user "$db" -e "SHOW TABLES;"; else mysql_exec_root "$db" -e "SHOW TABLES;"; fi
     ;;
 
   create-db)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "create-db requires a db name (or set MYSQL_DATABASE in container)."
+    [[ -n "$db" ]] || die "create-db requires a db name."
 
     docker exec -i "$SERVICE" sh -lc '
         db="$1"
         u="${MYSQL_USER-}"
         sql="CREATE DATABASE IF NOT EXISTS \`$db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT ALL PRIVILEGES ON \`$db\`.* TO '\''$u'\''@'\''%'\'';
-FLUSH PRIVILEGES;"
+GRANT ALL PRIVILEGES ON \`$db\`.* TO '\''$u'\''@'\''%'\''; FLUSH PRIVILEGES;"
         umask 077
         f="$(mktemp)"; trap "rm -f $f" EXIT
         cat >"$f" <<EOF
@@ -288,13 +329,14 @@ EOF
 
   import)
     shift
-    local file="${1:-}"; shift || true
+    local file="${1:-}"
+    shift || true
     [[ -n "$file" ]] || die "import requires a file path (.sql or .sql.gz)."
-
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "import requires a db name (or set MYSQL_DATABASE in container)."
+    [[ -n "$db" ]] || die "import requires a db name."
 
-    local ws_file; ws_file="$(to_workspace_path "$file")"
+    local ws_file
+    ws_file="$(to_workspace_path "$file")"
 
     if [[ "$file" == *.gz ]]; then
       run_client "$IMAGE" "$ROOT_PW" "$USER" "$USER_PW" sh -lc '
@@ -331,10 +373,10 @@ EOF
     echo "OK: imported '$file' -> db '$db'" >&2
     ;;
 
-  export|dump)
+  export | dump)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "export requires a db name (or set MYSQL_DATABASE in container)."
+    [[ -n "$db" ]] || die "export requires a db name."
     local out="${2:-${db}.sql}"
 
     run_client "$IMAGE" "$ROOT_PW" "$USER" "$USER_PW" sh -lc '
@@ -357,20 +399,13 @@ EOF
     ;;
 
   *)
-  # Default behavior:
-  #  - mysql "SQL ..."       -> run as -e on default db
-  #  - mysql mydb "SQL ..."  -> run as -e on provided db
-  #  - mysql [mysql args...] -> passthrough
-
-    shift 0
-
     if has_execute_flag "$@"; then
       if [[ "$as_user" == true ]]; then mysql_exec_user "$@"; else mysql_exec_root "$@"; fi
       exit 0
     fi
 
     if [[ $# -eq 1 ]] && looks_like_sql "$1"; then
-      [[ -n "${DEF_DB:-}" ]] || die "No default database set in container (MYSQL_DATABASE). Provide db name: mysql <db> \"SQL...\""
+      [[ -n "${DEF_DB:-}" ]] || die "No default database set. Provide db: mysql <db> \"SQL...\""
       if [[ "$as_user" == true ]]; then
         exec docker exec "$(is_tty)" "$SERVICE" sh -lc '
             db="$1"; sql="$2"
@@ -405,7 +440,8 @@ EOF
     fi
 
     if [[ $# -ge 2 ]] && [[ "$1" =~ ^[A-Za-z0-9_]+$ ]] && looks_like_sql "$2"; then
-      local db="$1"; shift
+      local db="$1"
+      shift
       local sql="$*"
       if [[ "$as_user" == true ]]; then
         exec docker exec "$(is_tty)" "$SERVICE" sh -lc '

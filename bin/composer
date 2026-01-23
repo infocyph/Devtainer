@@ -45,6 +45,63 @@ if [[ -r "$ENV_FILE" ]]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# MSYS/Git Bash detection (parser-safe)
+# ─────────────────────────────────────────────────────────────────────────────
+is_msys() {
+  case "${OSTYPE:-}" in
+  msys* | cygwin*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MSYS/Git Bash: prevent path auto-conversion when calling docker.exe
+# Fixes: "-w /workspace" becoming "-w D:/Program Files/Git/workspace"
+# ─────────────────────────────────────────────────────────────────────────────
+msys_no_pathconv() {
+  if is_msys; then
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL='*'
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resolve host working directory for Docker Desktop bind mount.
+# Priority:
+#   1) WORKDIR_WIN  (from server.bat wrapper)
+#   2) WORKING_DIR  (from docker/.env)
+#   3) $PWD
+#   4) repo root (safe fallback)
+# NOTE: host path should be Windows absolute for Docker Desktop on Windows.
+# ─────────────────────────────────────────────────────────────────────────────
+resolve_host_pwd() {
+  local host="${WORKDIR_WIN:-${WORKING_DIR:-}}"
+
+  if [[ -z "${host}" ]]; then
+    host="$PWD"
+  fi
+  [[ -n "${host}" ]] || host="$ROOT_DIR"
+
+  if command -v cygpath >/dev/null 2>&1; then
+    # Convert MSYS /c/... -> C:\... for docker.exe bind mount
+    [[ "$host" == /* ]] && host="$(cygpath -w "$host")"
+  fi
+
+  # Guard: if launched in Git install "workspace", fallback to repo root
+  case "$host" in
+  *"Program Files/Git/workspace"* | *"Program Files\\Git\\workspace"*)
+    if command -v cygpath >/dev/null 2>&1; then
+      host="$(cygpath -w "$ROOT_DIR")"
+    else
+      host="$ROOT_DIR"
+    fi
+    ;;
+  esac
+
+  printf '%s' "$host"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Version helpers
 # ─────────────────────────────────────────────────────────────────────────────
 ver_norm() {
@@ -262,13 +319,10 @@ kv "PHP detected:" "${C_YELLOW}${DETECTED_VER}${C_RESET} ${C_CYAN}(${DETECT_REAS
 kv "Container:" "${C_YELLOW}${TARGET_CONTAINER}${C_RESET}"
 kv "Image:" "${C_YELLOW}${IMAGE}${C_RESET}"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Run composer with:
-# - dynamic mount of current directory
-# - same networking as the target PHP container
-# - ssh mount (repo/configuration/ssh) for private git repos
-# ─────────────────────────────────────────────────────────────────────────────
-RUN_FLAGS=(--rm -v "$PWD":/workspace -w /workspace --network "container:$TARGET_CONTAINER")
+HOST_PWD="$(resolve_host_pwd)"
+msys_no_pathconv
+
+RUN_FLAGS=(--rm -v "$HOST_PWD":/workspace -w /workspace --network "container:$TARGET_CONTAINER")
 [[ -t 0 ]] && RUN_FLAGS+=(-it) || RUN_FLAGS+=(-i)
 RUN_FLAGS+=(-u "$(id -u):$(id -g)")
 
@@ -276,7 +330,6 @@ if [[ -d "$SSH_DIR" ]]; then
   RUN_FLAGS+=(-v "$SSH_DIR:/home/${USER:-root}/.ssh:ro")
 fi
 
-# cache mounts for speed (optional)
 if [[ -n "${HOME:-}" && -d "$HOME" ]]; then
   mkdir -p "$HOME/.cache/composer" "$HOME/.composer" 2>/dev/null || true
   RUN_FLAGS+=(

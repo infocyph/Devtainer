@@ -6,17 +6,10 @@ die() {
   exit 1
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Repo layout:
-#   <root>/bin/redis
-#   <root>/docker/.env
-# ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
-# 1) Safer .env load (host is OPTIONAL): whitelist only what we need
-# NOTE: redis container already has most runtime config; host env is just for
-#       container name override / optional default db index / optional password.
+# Safe host .env load (optional; whitelist)
 if [[ -r "$ENV_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
@@ -36,20 +29,15 @@ fi
 
 SERVICE="${REDIS_CONTAINER:-REDIS}"
 
-# 2) Faster container check
 require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
-
 is_tty() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
 
-# Read env var from inside the running redis container (best source of truth)
+# Read env var from container (best source of truth)
 cenv() {
   local key="$1"
-  docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
+  docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key" 2>/dev/null || true
 }
 
-# Determine password:
-# - if host provided REDIS_PASSWORD -> use it
-# - else try container env (commonly none for your compose)
 redis_password() {
   local pw="${REDIS_PASSWORD:-}"
   [[ -n "$pw" ]] && {
@@ -60,8 +48,6 @@ redis_password() {
   printf '%s' "$pw"
 }
 
-# Default db index:
-# - host REDIS_DB if provided, else 0
 redis_db() {
   local db="${REDIS_DB:-}"
   [[ -n "$db" ]] || db="0"
@@ -71,38 +57,21 @@ redis_db() {
 usage() {
   cat >&2 <<'TXT'
 Usage:
-  redis-cli                     # interactive redis-cli inside container
-  redis-cli <redis-cli args...>  # passthrough to redis-cli inside container
+  redis-cli                     # interactive
+  redis-cli <args...>            # passthrough
 
 Shortcuts:
-  redis-cli db <index> [cmd...] # run a command on a specific db index (e.g. redis db 2 keys '*')
-
-  # samples
-  redis-cli ping
-  redis-cli info
-  redis-cli keys <pattern>
-  redis-cli get <key>
-  redis-cli set <key> <value>
-  redis-cli del <key...>
-  redis-cli flushdb             # current db
-  redis-cli flushall            # all dbs
-
-Notes:
-- No volumes are mounted (redis-cli runs inside the running container).
-- If you set REDIS_PASSWORD (host .env) it will be used automatically.
+  redis-cli db <index> [cmd...]  # run on a specific DB index
+  redis-cli status
 TXT
 }
 
-# Exec redis-cli inside the running container (no mounts)
 redis_exec() {
   local flags
   flags="$(is_tty)"
   local pw db
   pw="$(redis_password)"
   db="$(redis_db)"
-
-  # Build base args safely (avoid leaking password in process list if possible)
-  # redis-cli supports REDISCLI_AUTH env (preferred over -a).
   if [[ -n "$pw" ]]; then
     exec docker exec $flags -e "REDISCLI_AUTH=$pw" "$SERVICE" redis-cli -n "$db" "$@"
   else
@@ -113,14 +82,12 @@ redis_exec() {
 main() {
   require_container
 
-  # No args => interactive shell
   if [[ $# -eq 0 ]]; then
     redis_exec
     exit 0
   fi
 
-  local cmd="${1:-}"
-  case "$cmd" in
+  case "${1:-}" in
   -h | --help | help)
     usage
     exit 0
@@ -132,7 +99,7 @@ main() {
   db)
     shift
     local idx="${1:-}"
-    [[ -n "$idx" ]] || die "db requires an index (e.g. redis db 2 keys '*')."
+    [[ -n "$idx" ]] || die "db requires an index."
     [[ "$idx" =~ ^[0-9]+$ ]] || die "db index must be numeric."
     shift || true
 
@@ -147,12 +114,9 @@ main() {
     fi
     ;;
   *)
-    # passthrough (supports: redis -c, redis --scan, redis --latency, etc.)
     redis_exec "$@"
     ;;
   esac
 }
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@"
-fi
+main "$@"

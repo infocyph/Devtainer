@@ -49,6 +49,6 @@ docker info >nul 2>&1
 if errorlevel 1 echo %WARN% Docker installed but NOT running/reachable (docker info failed). Start Docker Desktop / engine.
 
 :run
-"%BASH_EXE%" -lc "set -euo pipefail; DEVHOME_WIN=\"$1\"; WORKDIR_WIN=\"$2\"; DEVHOME=$(cygpath -u \"$DEVHOME_WIN\"); WORKDIR=$(cygpath -u \"$WORKDIR_WIN\"); export WORKDIR WORKDIR_WIN; cd \"$DEVHOME\"; chmod +x ./server >/dev/null 2>&1 || true; shift 2; exec ./server \"$@\"" bash "%DEVHOME%" "%WORKDIR%" %*
+"%BASH_EXE%" -lc "set -euo pipefail; export TERM=xterm-256color; DEVHOME_WIN=\"$1\"; CALLER_WIN=\"$2\"; DEVHOME=$(cygpath -u \"$DEVHOME_WIN\"); CALLER=$(cygpath -u \"$CALLER_WIN\"); cd \"$DEVHOME\"; chmod +x ./server >/dev/null 2>&1 || true; cd \"$CALLER\"; shift 2; exec \"$DEVHOME/server\" --__win_workdir \"$CALLER_WIN\" \"$@\"" bash "%DEVHOME%" "%WORKDIR%" %*
 
 exit /b %ERRORLEVEL%

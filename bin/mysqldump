@@ -1,33 +1,88 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die() {
-  echo "Error: $*" >&2
-  exit 1
-}
+die() { echo "Error: $*" >&2; exit 1; }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Repo layout:
-#   <root>/bin/mysqldump
-#   <root>/docker/.env
-# ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
-# Optional: whitelist-load only what we need from host env (safe)
+is_msys() {
+  case "${OSTYPE:-}" in
+  msys*|cygwin*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+msys_no_pathconv() {
+  if is_msys; then
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL='*'
+  fi
+}
+
+resolve_mount_root() {
+  local posix_root="" host_path=""
+
+  if [[ -n "${WORKDIR:-}" && -d "${WORKDIR}" ]]; then
+    posix_root="$WORKDIR"
+  fi
+
+  if [[ -z "$posix_root" && -n "${WORKDIR_WIN:-}" ]]; then
+    if command -v cygpath >/dev/null 2>&1; then
+      posix_root="$(cygpath -u "$WORKDIR_WIN" 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "$posix_root" && -n "${WORKING_DIR:-}" ]]; then
+    if [[ -d "$WORKING_DIR" ]]; then
+      posix_root="$WORKING_DIR"
+    else
+      if command -v cygpath >/dev/null 2>&1; then
+        posix_root="$(cygpath -u "$WORKING_DIR" 2>/dev/null || true)"
+      fi
+    fi
+  fi
+
+  [[ -n "$posix_root" && -d "$posix_root" ]] || posix_root="$PWD"
+  posix_root="$(cd "$posix_root" && pwd)"
+
+  if is_msys; then
+    if command -v cygpath >/dev/null 2>&1; then
+      host_path="$(cygpath -w "$posix_root")"
+    else
+      host_path="$posix_root"
+    fi
+  else
+    host_path="$posix_root"
+  fi
+
+  case "$host_path" in
+  *"Program Files/Git/workspace"*|*"Program Files\\Git\\workspace"*)
+    if is_msys && command -v cygpath >/dev/null 2>&1; then
+      host_path="$(cygpath -w "$posix_root")"
+    fi
+    ;;
+  esac
+
+  MOUNT_POSIX_ROOT="$posix_root"
+  MOUNT_HOST_PATH="$host_path"
+}
+
+
+MOUNT_POSIX_ROOT=""
+MOUNT_HOST_PATH=""
+
 if [[ -r "$ENV_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
     k="${k//[[:space:]]/}"
     case "$k" in
-    MYSQL_CONTAINER | MYSQL_PORT_IN | MYSQL_ROOT_PASSWORD | MYSQL_DATABASE) ;;
+    MYSQL_CONTAINER|MYSQL_PORT_IN|MYSQL_ROOT_PASSWORD|MYSQL_DATABASE|WORKING_DIR) ;;
     *) continue ;;
     esac
     v="${v%$'\r'}"
-    v="${v#\"}"
-    v="${v%\"}"
-    v="${v#\'}"
-    v="${v%\'}"
+    v="${v#\"}"; v="${v%\"}"
+    v="${v#\'}"; v="${v%\'}"
     export "$k=$v"
   done <"$ENV_FILE"
 fi
@@ -35,10 +90,8 @@ fi
 SERVICE="${MYSQL_CONTAINER:-MYSQL}"
 MYSQL_PORT_IN="${MYSQL_PORT_IN:-}"
 
-# Faster check
 require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
 
-# Best source of truth: env vars inside running container
 cenv() {
   local key="$1"
   docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
@@ -50,16 +103,20 @@ mysql_image() {
 
 infer_port() {
   [[ -n "${MYSQL_PORT_IN:-}" ]] && return 0
-  MYSQL_PORT_IN="$(cenv MYSQL_PORT || true)"
+  MYSQL_PORT_IN="$(cenv MYSQL_PORT 2>/dev/null || true)"
   MYSQL_PORT_IN="${MYSQL_PORT_IN:-3306}"
 }
 
-# Ephemeral client with dynamic mount (only for file output)
 run_client_mount_pwd() {
   local image="$1"
   shift
-  docker run --rm \
-    -v "$PWD":/workspace -w /workspace \
+  local flags=()
+  [[ -t 0 ]] && flags+=(-it) || flags+=(-i)
+
+  msys_no_pathconv
+
+  docker run --rm "${flags[@]}" \
+    -v "$MOUNT_HOST_PATH":/workspace -w /workspace \
     --network "container:$SERVICE" \
     "$image" "$@"
 }
@@ -72,35 +129,26 @@ Usage:
   mysqldump schema [db] [out.sql]       # no data
   mysqldump data [db] [out.sql]         # no schema
   mysqldump [raw mysqldump args...]     # streams to stdout (no file writing)
-
-Examples:
-  mysqldump dump localdb localdb.sql
-  mysqldump schema localdb schema.sql
-  mysqldump data localdb data.sql
-  mysqldump dump-all all.sql
-  mysqldump localdb > localdb.sql
 TXT
 }
 
 main() {
   require_container
   infer_port
+  resolve_mount_root
+  msys_no_pathconv
 
   local ROOT_PW DB IMAGE
-  ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD)"
-  DB="$(cenv MYSQL_DATABASE)"
+  ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD 2>/dev/null || true)"
+  DB="$(cenv MYSQL_DATABASE 2>/dev/null || true)"
   IMAGE="$(mysql_image)"
 
-  # Fallback to host env (optional)
-  [[ -n "$ROOT_PW" ]] || ROOT_PW="${MYSQL_ROOT_PASSWORD:-}"
-  [[ -n "$DB" ]] || DB="${MYSQL_DATABASE:-}"
+  [[ -n "${ROOT_PW:-}" ]] || ROOT_PW="${MYSQL_ROOT_PASSWORD:-}"
+  [[ -n "${DB:-}" ]] || DB="${MYSQL_DATABASE:-}"
 
   local cmd="${1:-}"
   case "$cmd" in
-  "" | -h | --help | help)
-    usage
-    exit 0
-    ;;
+  ""|-h|--help|help) usage; exit 0 ;;
   esac
 
   case "$cmd" in
@@ -122,7 +170,7 @@ host=127.0.0.1
 port=$port
 protocol=TCP
 EOF
-        mysqldump --defaults-extra-file="$cf" \
+        exec mysqldump --defaults-extra-file="$cf" \
           --single-transaction --quick --routines --events \
           "$db" > "/workspace/$out"
       ' sh "$db" "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
@@ -146,7 +194,7 @@ host=127.0.0.1
 port=$port
 protocol=TCP
 EOF
-        mysqldump --defaults-extra-file="$cf" \
+        exec mysqldump --defaults-extra-file="$cf" \
           --single-transaction --quick --routines --events \
           --all-databases > "/workspace/$out"
       ' sh "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
@@ -172,7 +220,7 @@ host=127.0.0.1
 port=$port
 protocol=TCP
 EOF
-        mysqldump --defaults-extra-file="$cf" \
+        exec mysqldump --defaults-extra-file="$cf" \
           --no-data --routines --events \
           "$db" > "/workspace/$out"
       ' sh "$db" "$out" "$ROOT_PW" "$MYSQL_PORT_IN"
@@ -198,7 +246,7 @@ host=127.0.0.1
 port=$port
 protocol=TCP
 EOF
-        mysqldump --defaults-extra-file="$cf" \
+        exec mysqldump --defaults-extra-file="$cf" \
           --no-create-info --skip-triggers \
           --single-transaction --quick \
           "$db" > "/workspace/$out"
@@ -208,8 +256,6 @@ EOF
     ;;
 
   *)
-    # Raw mode: stream to stdout (no mounts)
-    # Uses defaults file inside the running container (no password in argv)
     exec docker exec -i "$SERVICE" sh -lc '
         umask 077
         cf="$(mktemp)"; trap "rm -f $cf" EXIT
@@ -218,7 +264,7 @@ EOF
 user=root
 password=${MYSQL_ROOT_PASSWORD-}
 host=127.0.0.1
-port=${MYSQL_PORT-3306}
+port=${MYSQL_PORT_IN-${MYSQL_PORT-3306}}
 protocol=TCP
 EOF
         exec mysqldump --defaults-extra-file="$cf" "$@"

@@ -9,13 +9,69 @@ die() {
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
-# Optional host fallback: only service name / port override (safe whitelist)
+# ─────────────────────────────────────────────────────────────────────────────
+# MSYS/Git Bash: prevent path auto-conversion when calling docker.exe
+# ─────────────────────────────────────────────────────────────────────────────
+is_msys() {
+  case "${OSTYPE:-}" in
+  msys* | cygwin*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+msys_no_pathconv() {
+  if is_msys; then
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL='*'
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resolve mount root (used only for docker run modes)
+# Produces:
+#   MOUNT_POSIX_ROOT (posix absolute)
+#   MOUNT_HOST_PATH  (host path suitable for docker -v; windows path on MSYS)
+# ─────────────────────────────────────────────────────────────────────────────
+MOUNT_POSIX_ROOT=""
+MOUNT_HOST_PATH=""
+
+resolve_mount_root() {
+  local posix_root="" host_path=""
+
+  if [[ -n "${WORKDIR:-}" && -d "${WORKDIR}" ]]; then
+    posix_root="$WORKDIR"
+  elif [[ -n "${WORKDIR_WIN:-}" && -n "$(command -v cygpath 2>/dev/null || true)" ]]; then
+    posix_root="$(cygpath -u "$WORKDIR_WIN" 2>/dev/null || true)"
+  elif [[ -n "${WORKING_DIR:-}" ]]; then
+    if [[ -d "$WORKING_DIR" ]]; then
+      posix_root="$WORKING_DIR"
+    elif command -v cygpath >/dev/null 2>&1; then
+      posix_root="$(cygpath -u "$WORKING_DIR" 2>/dev/null || true)"
+    fi
+  fi
+
+  [[ -n "$posix_root" && -d "$posix_root" ]] || posix_root="$PWD"
+  posix_root="$(cd "$posix_root" && pwd)"
+
+  if is_msys && command -v cygpath >/dev/null 2>&1; then
+    host_path="$(cygpath -w "$posix_root")"
+  else
+    host_path="$posix_root"
+  fi
+
+  MOUNT_POSIX_ROOT="$posix_root"
+  MOUNT_HOST_PATH="$host_path"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Safe host .env load (optional; whitelist only)
+# ─────────────────────────────────────────────────────────────────────────────
 if [[ -r "$ENV_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
     k="${k//[[:space:]]/}"
     case "$k" in
-    POSTGRESQL_CONTAINER | POSTGRES_CONTAINER | POSTGRES_PORT_IN) ;;
+    POSTGRESQL_CONTAINER | POSTGRES_CONTAINER | POSTGRES_PORT_IN | WORKING_DIR) ;;
     *) continue ;;
     esac
     v="${v%$'\r'}"
@@ -32,12 +88,11 @@ POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-}"
 
 require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
 
-# POSIX-safe env read from container (no bashisms)
+# POSIX-safe env read from container
 cenv() {
   local key="$1"
   docker exec -i "$SERVICE" sh -lc 'eval "printf %s \"\${$1-}\""' sh "$key" 2>/dev/null || true
 }
-
 cenv_any() {
   local v key
   for key in "$@"; do
@@ -56,57 +111,62 @@ infer_port() {
   POSTGRES_PORT_IN="${POSTGRES_PORT_IN:-5432}"
 }
 
+pg_image() {
+  docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || die "failed to inspect image for '$SERVICE'."
+}
+
+run_pg_mount() {
+  local image="$1"
+  shift
+  local flags=()
+  [[ -t 0 ]] && flags+=(-it) || flags+=(-i)
+
+  msys_no_pathconv
+  docker run --rm "${flags[@]}" \
+    -v "$MOUNT_HOST_PATH":/workspace -w /workspace \
+    --network "container:$SERVICE" \
+    "$image" "$@"
+}
+
 usage() {
   cat >&2 <<'TXT'
 pg_dump (docker wrapper)
 
-Shortcuts:
+Shortcuts (writes to local files; uses mount when possible):
   pg_dump dump [db] [out.sql|out.sql.gz]
-  pg_dump dump-all [out.sql|out.sql.gz]       # all DBs (pg_dumpall)
-  pg_dump schema [db] [out.sql|out.sql.gz]    # schema-only
-  pg_dump data [db] [out.sql|out.sql.gz]      # data-only
-  pg_dump roles [out.sql|out.sql.gz]          # globals only (roles/tablespaces)
+  pg_dump dump-all [out.sql|out.sql.gz]        # pg_dumpall
+  pg_dump roles [out.sql|out.sql.gz]           # globals-only (roles/tablespaces)
+  pg_dump schema [db] [out.sql|out.sql.gz]     # schema-only
+  pg_dump data [db] [out.sql|out.sql.gz]       # data-only
   pg_dump status
 
-Raw mode (streams to stdout):
-  pg_dump [pg_dump args...]   # e.g. pg_dump -d mydb > mydb.sql
-
-Examples:
-  pg_dump dump mydb mydb.sql
-  pg_dump dump mydb mydb.sql.gz
-  pg_dump schema mydb schema.sql
-  pg_dump dump-all all.sql.gz
-  pg_dump -d mydb --no-owner > mydb.sql
+Raw mode (streams to stdout; no mounts):
+  pg_dump [pg_dump args...]                    # e.g. pg_dump -d mydb > mydb.sql
 TXT
 }
 
 main() {
-  case "${1:-}" in help | -h | --help | "") [[ "${1:-}" != "" ]] && {
+  case "${1:-}" in "" | -h | --help | help)
     usage
     exit 0
-  } ;; esac
+    ;;
+  esac
 
   require_container
   infer_port
+  resolve_mount_root
+  msys_no_pathconv
 
-  # creds from container env (preferred)
-  local PGUSER PGPASS PGDB
+  local PGUSER PGPASS PGDB IMAGE
   PGUSER="$(cenv_any POSTGRES_USER PGUSER || true)"
-  PGPASS="$(cenv_any POSTGRES_PASSWORD PGPASSWORD || true)"
-  PGDB="$(cenv_any POSTGRES_DATABASE POSTGRES_DB PGDATABASE || true)"
   [[ -n "${PGUSER:-}" ]] || PGUSER="postgres"
+  PGPASS="$(cenv_any POSTGRES_PASSWORD PGPASSWORD || true)"
   [[ -n "${PGPASS:-}" ]] || PGPASS="postgres"
+  PGDB="$(cenv_any POSTGRES_DATABASE POSTGRES_DB PGDATABASE || true)"
+  IMAGE="$(pg_image)"
 
   local cmd="${1:-}"
   case "$cmd" in
-  "")
-    usage
-    exit 0
-    ;;
-  -h | --help | help)
-    usage
-    exit 0
-    ;;
   status)
     docker ps --filter "name=^/${SERVICE}$" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     exit 0
@@ -117,17 +177,21 @@ main() {
   dump)
     shift
     local db="${1:-$PGDB}"
-    [[ -n "$db" ]] || die "dump requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    [[ -n "$db" ]] || die "dump requires a db name (or set POSTGRES_DB/POSTGRES_DATABASE)."
     local out="${2:-${db}.sql}"
 
     if [[ "$out" == *.gz ]]; then
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --no-owner --no-privileges | gzip -c >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --no-owner --no-privileges \
+            | gzip -c > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     else
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --no-owner --no-privileges >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --no-owner --no-privileges \
+            > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     fi
     echo "OK: dumped '$db' -> ./$out" >&2
     ;;
@@ -137,11 +201,17 @@ main() {
     local out="${1:-all.sql}"
 
     if [[ "$out" == *.gz ]]; then
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" | gzip -c >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          out="$1"; user="$2"; pass="$3"; port="$4"
+          PGPASSWORD="$pass" pg_dumpall -h127.0.0.1 -p"$port" -U"$user" \
+            | gzip -c > "/workspace/$out"
+        ' sh "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     else
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          out="$1"; user="$2"; pass="$3"; port="$4"
+          PGPASSWORD="$pass" pg_dumpall -h127.0.0.1 -p"$port" -U"$user" \
+            > "/workspace/$out"
+        ' sh "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     fi
     echo "OK: dumped all databases -> ./$out" >&2
     ;;
@@ -151,11 +221,17 @@ main() {
     local out="${1:-globals.sql}"
 
     if [[ "$out" == *.gz ]]; then
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" --globals-only | gzip -c >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          out="$1"; user="$2"; pass="$3"; port="$4"
+          PGPASSWORD="$pass" pg_dumpall -h127.0.0.1 -p"$port" -U"$user" --globals-only \
+            | gzip -c > "/workspace/$out"
+        ' sh "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     else
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dumpall -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" --globals-only >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          out="$1"; user="$2"; pass="$3"; port="$4"
+          PGPASSWORD="$pass" pg_dumpall -h127.0.0.1 -p"$port" -U"$user" --globals-only \
+            > "/workspace/$out"
+        ' sh "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     fi
     echo "OK: dumped globals (roles) -> ./$out" >&2
     ;;
@@ -163,17 +239,21 @@ main() {
   schema)
     shift
     local db="${1:-$PGDB}"
-    [[ -n "$db" ]] || die "schema requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    [[ -n "$db" ]] || die "schema requires a db name."
     local out="${2:-${db}.schema.sql}"
 
     if [[ "$out" == *.gz ]]; then
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --schema-only --no-owner --no-privileges | gzip -c >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --schema-only --no-owner --no-privileges \
+            | gzip -c > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     else
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --schema-only --no-owner --no-privileges >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --schema-only --no-owner --no-privileges \
+            > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     fi
     echo "OK: schema dumped '$db' -> ./$out" >&2
     ;;
@@ -181,24 +261,27 @@ main() {
   data)
     shift
     local db="${1:-$PGDB}"
-    [[ -n "$db" ]] || die "data requires a db name (or set POSTGRES_DATABASE/POSTGRES_DB)."
+    [[ -n "$db" ]] || die "data requires a db name."
     local out="${2:-${db}.data.sql}"
 
     if [[ "$out" == *.gz ]]; then
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --data-only --no-owner --no-privileges | gzip -c >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --data-only --no-owner --no-privileges \
+            | gzip -c > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     else
-      docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
-        pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" -d "$db" \
-        --data-only --no-owner --no-privileges >"$out"
+      run_pg_mount "$IMAGE" sh -lc '
+          db="$1"; out="$2"; user="$3"; pass="$4"; port="$5"
+          PGPASSWORD="$pass" pg_dump -h127.0.0.1 -p"$port" -U"$user" -d "$db" --data-only --no-owner --no-privileges \
+            > "/workspace/$out"
+        ' sh "$db" "$out" "$PGUSER" "$PGPASS" "$POSTGRES_PORT_IN"
     fi
     echo "OK: data dumped '$db' -> ./$out" >&2
     ;;
 
   *)
-    # Raw mode: stream to stdout. Works with redirection:
-    #   pg_dump -d mydb > mydb.sql
+    # Raw mode: stream to stdout (no mounts)
     exec docker exec -i -e "PGPASSWORD=$PGPASS" "$SERVICE" \
       pg_dump -h127.0.0.1 -p"$POSTGRES_PORT_IN" -U"$PGUSER" "$@"
     ;;

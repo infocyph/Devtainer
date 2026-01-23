@@ -6,15 +6,51 @@ die() {
   exit 1
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Repo layout:
-#   <root>/bin/mariadb      (this script)
-#   <root>/docker/.env
-# ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
-# 1) Safer .env load: whitelist only what we need
+is_msys() {
+  case "${OSTYPE:-}" in
+  msys* | cygwin*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+msys_no_pathconv() {
+  if is_msys; then
+    export MSYS_NO_PATHCONV=1
+    export MSYS2_ARG_CONV_EXCL='*'
+  fi
+}
+
+resolve_host_pwd() {
+  local host="${WORKDIR_WIN:-${WORKING_DIR:-}}"
+
+  if [[ -z "${host}" ]]; then
+    host="$PWD"
+  fi
+  [[ -n "${host}" ]] || host="$ROOT_DIR"
+
+  if command -v cygpath >/dev/null 2>&1; then
+    [[ "$host" == /* ]] && host="$(cygpath -w "$host")"
+  fi
+
+  case "$host" in
+  *"Program Files/Git/workspace"* | *"Program Files\\Git\\workspace"*)
+    if command -v cygpath >/dev/null 2>&1; then
+      host="$(cygpath -w "$ROOT_DIR")"
+    else
+      host="$ROOT_DIR"
+    fi
+    ;;
+  esac
+
+  printf '%s' "$host"
+}
+
+HOST_PWD="$(resolve_host_pwd)"
+msys_no_pathconv
+
 if [[ -r "$ENV_FILE" ]]; then
   while IFS='=' read -r k v; do
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
@@ -33,16 +69,13 @@ if [[ -r "$ENV_FILE" ]]; then
 fi
 
 SERVICE="${MARIADB_CONTAINER:-MARIADB}"
-MARIADB_PORT_IN="${MARIADB_PORT_IN:-}" # inferred later if empty
+MARIADB_PORT_IN="${MARIADB_PORT_IN:-}"
 
-require_container() {
-  docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."
-}
+require_container() { docker inspect "$SERVICE" >/dev/null 2>&1 || die "container '$SERVICE' is not running."; }
 
 is_tty() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
 is_interactive_stdin() { [[ -t 0 ]] && echo "-it" || echo "-i"; }
 
-# Read env var from inside the running mariadb container
 cenv() {
   local key="$1"
   docker exec -i "$SERVICE" sh -lc 'printf "%s" "${!1-}"' sh "$key"
@@ -52,16 +85,14 @@ db_image() {
   docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || die "failed to inspect image for '$SERVICE'."
 }
 
-# Prefer mariadb client; fallback mysql
 db_client_bin() {
   docker exec -i "$SERVICE" sh -lc '
     command -v mariadb >/dev/null 2>&1 && { echo mariadb; exit 0; }
-    command -v mysql >/dev/null 2>&1 && { echo mysql; exit 0; }
+    command -v mysql   >/dev/null 2>&1 && { echo mysql; exit 0; }
     exit 1
   ' 2>/dev/null || die "no mariadb/mysql client binary found in container '$SERVICE'."
 }
 
-# Convert host path -> /workspace/<relative-to-PWD> (file must be under PWD)
 to_workspace_path() {
   local host_path="$1"
   [[ -f "$host_path" ]] || die "file not found: $host_path"
@@ -105,15 +136,12 @@ looks_like_sql() {
   return 1
 }
 
-# Infer internal port (env first, fallback 3306)
 infer_port() {
   [[ -n "${MARIADB_PORT_IN:-}" ]] && return 0
-  # MariaDB doesn't usually export port env; allow override; fallback 3306.
   MARIADB_PORT_IN="$(cenv MARIADB_PORT 2>/dev/null || true)"
   MARIADB_PORT_IN="${MARIADB_PORT_IN:-3306}"
 }
 
-# Resolve MariaDB envs with compatibility fallbacks
 load_db_env() {
   ROOT_PW="$(cenv MARIADB_ROOT_PASSWORD || true)"
   [[ -n "$ROOT_PW" ]] || ROOT_PW="$(cenv MYSQL_ROOT_PASSWORD || true)"
@@ -128,7 +156,6 @@ load_db_env() {
   [[ -n "$DEF_DB" ]] || DEF_DB="$(cenv MYSQL_DATABASE || true)"
 }
 
-# Safer auth using defaults file (no MYSQL_PWD / env leaks)
 db_exec_root() {
   local flags
   flags="$(is_tty)"
@@ -171,16 +198,16 @@ EOF
   ' sh "$client" "$@"
 }
 
-# Ephemeral client container with dynamic mount of current dir
-# Uses --network container:MARIADB so it can talk to server via 127.0.0.1
 run_client() {
   local image="$1" root_pw="$2" user="$3" user_pw="$4" client="$5"
   shift 5
   local flags
   flags="$(is_interactive_stdin)"
 
+  msys_no_pathconv
+
   docker run --rm $flags \
-    -v "$PWD":/workspace -w /workspace \
+    -v "$HOST_PWD":/workspace -w /workspace \
     --network "container:$SERVICE" \
     -e MARIADB_ROOT_PASSWORD="$root_pw" \
     -e MYSQL_ROOT_PASSWORD="$root_pw" \
@@ -206,13 +233,6 @@ Usage:
   mariadb dbs
   mariadb tables [db_name]
   mariadb status
-
-Behavior:
-- No args: interactive prompt (root by default)
-- Stdin pipe: `cat file.sql | mariadb` runs against default DB (MARIADB_DATABASE/MYSQL_DATABASE)
-- File ops (import/export): ephemeral container with -v "$PWD":/workspace (dynamic mount)
-Notes:
-- import file must be inside current directory (because only $PWD is mounted)
 TXT
 }
 
@@ -221,9 +241,8 @@ main() {
   infer_port
   load_db_env
 
-  local client
+  local client image
   client="$(db_client_bin)"
-  local image
   image="$(db_image)"
 
   local as_user=false
@@ -232,7 +251,6 @@ main() {
     shift
   fi
 
-  # stdin support: cat query.sql | server mariadb
   if [[ $# -eq 0 && ! -t 0 ]]; then
     [[ -n "${DEF_DB:-}" ]] || die "No default database set in container (MARIADB_DATABASE/MYSQL_DATABASE)."
     if [[ "$as_user" == true ]]; then
@@ -270,7 +288,6 @@ EOF
     fi
   fi
 
-  # No args => interactive prompt
   if [[ $# -eq 0 ]]; then
     if [[ "$as_user" == true ]]; then db_exec_user "$client"; else db_exec_root "$client"; fi
     exit 0
@@ -290,35 +307,26 @@ EOF
 
   case "$cmd" in
   dbs)
-    if [[ "$as_user" == true ]]; then
-      db_exec_user "$client" -e "SHOW DATABASES;"
-    else
-      db_exec_root "$client" -e "SHOW DATABASES;"
-    fi
+    if [[ "$as_user" == true ]]; then db_exec_user "$client" -e "SHOW DATABASES;"; else db_exec_root "$client" -e "SHOW DATABASES;"; fi
     ;;
 
   tables)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "tables requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
-    if [[ "$as_user" == true ]]; then
-      db_exec_user "$client" "$db" -e "SHOW TABLES;"
-    else
-      db_exec_root "$client" "$db" -e "SHOW TABLES;"
-    fi
+    [[ -n "$db" ]] || die "tables requires a db name."
+    if [[ "$as_user" == true ]]; then db_exec_user "$client" "$db" -e "SHOW TABLES;"; else db_exec_root "$client" "$db" -e "SHOW TABLES;"; fi
     ;;
 
   create-db)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "create-db requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    [[ -n "$db" ]] || die "create-db requires a db name."
 
     docker exec -i "$SERVICE" sh -lc '
         db="$1"
         u="${MARIADB_USER-${MYSQL_USER-}}"
         sql="CREATE DATABASE IF NOT EXISTS \`$db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT ALL PRIVILEGES ON \`$db\`.* TO '\''$u'\''@'\''%'\'';
-FLUSH PRIVILEGES;"
+GRANT ALL PRIVILEGES ON \`$db\`.* TO '\''$u'\''@'\''%'\''; FLUSH PRIVILEGES;"
 
         client="$(command -v mariadb >/dev/null 2>&1 && echo mariadb || echo mysql)"
         umask 077
@@ -343,7 +351,7 @@ EOF
     shift || true
     [[ -n "$file" ]] || die "import requires a file path (.sql or .sql.gz)."
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "import requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    [[ -n "$db" ]] || die "import requires a db name."
 
     local ws_file
     ws_file="$(to_workspace_path "$file")"
@@ -386,10 +394,9 @@ EOF
   export | dump)
     shift
     local db="${1:-$DEF_DB}"
-    [[ -n "$db" ]] || die "export requires a db name (or set MARIADB_DATABASE/MYSQL_DATABASE)."
+    [[ -n "$db" ]] || die "export requires a db name."
     local out="${2:-${db}.sql}"
 
-    # prefer mariadb-dump if present; fallback mysqldump
     local dumpbin="mysqldump"
     if docker exec -i "$SERVICE" sh -lc 'command -v mariadb-dump >/dev/null 2>&1' >/dev/null 2>&1; then
       dumpbin="mariadb-dump"
@@ -415,13 +422,6 @@ EOF
     ;;
 
   *)
-    # Default behavior:
-    #  - mariadb "SQL ..."       -> run as -e on default db
-    #  - mariadb mydb "SQL ..."  -> run as -e on provided db
-    #  - mariadb [args...]       -> passthrough (append DEF_DB if only flags and DEF_DB set)
-
-    shift 0
-
     if has_execute_flag "$@"; then
       if [[ "$as_user" == true ]]; then db_exec_user "$client" "$@"; else db_exec_root "$client" "$@"; fi
       exit 0
@@ -429,11 +429,7 @@ EOF
 
     if [[ $# -eq 1 ]] && looks_like_sql "$1"; then
       [[ -n "${DEF_DB:-}" ]] || die "No default database set. Provide db name: mariadb <db> \"SQL...\""
-      if [[ "$as_user" == true ]]; then
-        db_exec_user "$client" "$DEF_DB" -e "$1"
-      else
-        db_exec_root "$client" "$DEF_DB" -e "$1"
-      fi
+      if [[ "$as_user" == true ]]; then db_exec_user "$client" "$DEF_DB" -e "$1"; else db_exec_root "$client" "$DEF_DB" -e "$1"; fi
       exit 0
     fi
 
@@ -441,11 +437,7 @@ EOF
       local db="$1"
       shift
       local sql="$*"
-      if [[ "$as_user" == true ]]; then
-        db_exec_user "$client" "$db" -e "$sql"
-      else
-        db_exec_root "$client" "$db" -e "$sql"
-      fi
+      if [[ "$as_user" == true ]]; then db_exec_user "$client" "$db" -e "$sql"; else db_exec_root "$client" "$db" -e "$sql"; fi
       exit 0
     fi
 
