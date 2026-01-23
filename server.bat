@@ -41,11 +41,18 @@ if not exist "%DEVHOME%\server" (
   exit /b 4
 )
 
-where docker >nul 2>&1
-if errorlevel 1 (
-  echo %WARN% docker CLI not found on Windows PATH. If ./server uses docker, it may fail.
-)
+REM ---------------------------------------------------------------------------
+REM Docker prereqs (Windows): installed + running?
+REM (NO parenthesis blocks; cmd-safe)
+REM ---------------------------------------------------------------------------
+where docker.exe >nul 2>&1
+if errorlevel 1 echo %WARN% docker.exe not found on Windows PATH. If ./server uses docker, it may fail.
+if errorlevel 1 goto :run
 
+docker info >nul 2>&1
+if errorlevel 1 echo %WARN% Docker installed but NOT running/reachable (docker info failed). Start Docker Desktop / engine.
+
+:run
 "%BASH_EXE%" -lc "set -euo pipefail; DEVHOME_WIN=\"$1\"; WORKDIR_WIN=\"$2\"; DEVHOME=$(cygpath -u \"$DEVHOME_WIN\"); WORKDIR=$(cygpath -u \"$WORKDIR_WIN\"); export WORKDIR WORKDIR_WIN; cd \"$DEVHOME\"; chmod +x ./server >/dev/null 2>&1 || true; shift 2; exec ./server \"$@\"" bash "%DEVHOME%" "%WORKDIR%" %*
 
 exit /b %ERRORLEVEL%
