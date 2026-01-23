@@ -41,10 +41,6 @@ if not exist "%DEVHOME%\server" (
   exit /b 4
 )
 
-REM ---------------------------------------------------------------------------
-REM Docker prereqs (Windows): installed + running?
-REM (NO parenthesis blocks; cmd-safe)
-REM ---------------------------------------------------------------------------
 where docker.exe >nul 2>&1
 if errorlevel 1 echo %WARN% docker.exe not found on Windows PATH. If ./server uses docker, it may fail.
 if errorlevel 1 goto :run
