@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die() { echo "Error: $*" >&2; exit 1; }
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/docker/.env"
 
 is_msys() {
   case "${OSTYPE:-}" in
-  msys*|cygwin*) return 0 ;;
+  msys* | cygwin*) return 0 ;;
   *) return 1 ;;
   esac
 }
@@ -57,7 +60,7 @@ resolve_mount_root() {
   fi
 
   case "$host_path" in
-  *"Program Files/Git/workspace"*|*"Program Files\\Git\\workspace"*)
+  *"Program Files/Git/workspace"* | *"Program Files\\Git\\workspace"*)
     if is_msys && command -v cygpath >/dev/null 2>&1; then
       host_path="$(cygpath -w "$posix_root")"
     fi
@@ -68,7 +71,6 @@ resolve_mount_root() {
   MOUNT_HOST_PATH="$host_path"
 }
 
-
 MOUNT_POSIX_ROOT=""
 MOUNT_HOST_PATH=""
 
@@ -77,12 +79,14 @@ if [[ -r "$ENV_FILE" ]]; then
     [[ -z "${k:-}" || "$k" =~ ^[[:space:]]*# ]] && continue
     k="${k//[[:space:]]/}"
     case "$k" in
-    MYSQL_CONTAINER|MYSQL_PORT_IN|MYSQL_ROOT_PASSWORD|MYSQL_DATABASE|WORKING_DIR) ;;
+    MYSQL_CONTAINER | MYSQL_PORT_IN | MYSQL_ROOT_PASSWORD | MYSQL_DATABASE | WORKING_DIR) ;;
     *) continue ;;
     esac
     v="${v%$'\r'}"
-    v="${v#\"}"; v="${v%\"}"
-    v="${v#\'}"; v="${v%\'}"
+    v="${v#\"}"
+    v="${v%\"}"
+    v="${v#\'}"
+    v="${v%\'}"
     export "$k=$v"
   done <"$ENV_FILE"
 fi
@@ -148,7 +152,10 @@ main() {
 
   local cmd="${1:-}"
   case "$cmd" in
-  ""|-h|--help|help) usage; exit 0 ;;
+  "" | -h | --help | help)
+    usage
+    exit 0
+    ;;
   esac
 
   case "$cmd" in
