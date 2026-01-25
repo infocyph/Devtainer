@@ -194,7 +194,7 @@ fix_perms() {
   chown -R "$USER:docker" "$DIR/logs"
 
   chmod 755 "$DIR/bin"
-  find "$DIR/bin" -type f ! -name '*.bat' -exec chmod 744 {} +
+  find "$DIR/bin" -type f -exec chmod +x {} +
   chmod +x "$DIR/server"
 
   ln -fs "$DIR/server" /usr/local/bin/server
@@ -757,8 +757,8 @@ main() {
   pg | pg_restore | pg-restore | pgrestore | pg_dump | pgdump | pg-dump | psql)
     exec "$DIR/bin/pg" "${@:2}"
     ;;
-  mariadb | mariadbdump | mariadb-dump | mariadb_dump)
-    exec "$DIR/bin/mariadbdump" "${@:2}"
+  maria | mariadb | mariadbdump | mariadb-dump | mariadb_dump)
+    exec "$DIR/bin/maria" "${@:2}"
     ;;
   my | mysql | mysqldump | mysql-dump | mysql_dump)
     exec "$DIR/bin/my" "${@:2}"
