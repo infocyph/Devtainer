@@ -719,7 +719,7 @@ EOF
 ###############################################################################
 main() {
   need docker readlink,greadlink
-  ensure_files_exist "/docker/.env" "/configuration/php/php.ini"
+  ensure_files_exist "/docker/.env" "/configuration/php/php.ini" "/.env"
 
   [[ $# -gt 0 ]] || {
     cmd_help
