@@ -23,13 +23,15 @@ ENV GIT_USER_NAME="" \
     LC_ALL=en_US.UTF-8
 
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-cli-setup.sh /usr/local/bin/cli-setup.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh /usr/local/bin/git-default.sh
 RUN apk add --no-cache bash && \
-    bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${PHP_VERSION}" && \
-    rm -f /usr/local/bin/cli-setup.sh
+  chmod +x /usr/local/bin/git-default.sh && \
+  bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${PHP_VERSION}" && \
+  rm -f /usr/local/bin/cli-setup.sh
 
 USER ${USERNAME}
-ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh /usr/local/bin/git-default.sh
-RUN bash /usr/local/bin/git-default.sh && \
-    rm -f /usr/local/bin/git-default.sh
+
+RUN sudo /usr/local/bin/git-default.sh && \
+    sudo rm -f /usr/local/bin/git-default.sh
 
 WORKDIR /app

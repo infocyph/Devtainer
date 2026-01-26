@@ -22,17 +22,16 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH" \
 
 RUN set -eux; apk update && apk add --no-cache bash
 
-# One-shot setup script (mirrors your PHP flow)
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/node-cli-setup.sh /usr/local/bin/cli-setup.sh
-RUN set -eux; bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${NODE_VERSION}"; rm -f /usr/local/bin/cli-setup.sh
+ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh /usr/local/bin/git-default.sh
+RUN apk add --no-cache bash && \
+  chmod +x /usr/local/bin/git-default.sh && \
+  bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${PHP_VERSION}" && \
+  rm -f /usr/local/bin/cli-setup.sh
 
 USER ${USERNAME}
 
-RUN set -eux; \
-    git config --global --add safe.directory "/app/*"; \
-    git config --global credential.helper "store --file ${GIT_CREDENTIAL_STORE}"; \
-    ( umask 077; : > "${GIT_CREDENTIAL_STORE}" ); \
-    if [ -n "${GIT_USER_NAME:-}" ]; then git config --global user.name "${GIT_USER_NAME}"; fi; \
-    if [ -n "${GIT_USER_EMAIL:-}" ]; then git config --global user.email "${GIT_USER_EMAIL}"; fi
+RUN sudo /usr/local/bin/git-default.sh && \
+    sudo rm -f /usr/local/bin/git-default.sh
 
 WORKDIR /app
