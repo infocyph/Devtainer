@@ -15,7 +15,8 @@ services:
       - ../../configuration/rootCA:/etc/share/rootCA
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.29.0.10
 
   runner:
     container_name: RUNNER
@@ -34,4 +35,5 @@ services:
     depends_on:
       - server-tools
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.29.0.11

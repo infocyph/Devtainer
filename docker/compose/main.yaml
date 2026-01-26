@@ -5,23 +5,25 @@ networks:
     name: Frontend
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1
+
   backend:
     name: Backend
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.29.0.0/24
+          gateway: 172.29.0.1
+
   datastore:
     name: DataStore
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
 
 include:
   - docker/compose/companion.yaml

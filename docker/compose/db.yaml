@@ -1,6 +1,7 @@
 x-db-service: &db-service
   restart: unless-stopped
-  networks: [ datastore ]
+  networks:
+    datastore: {}
 
 services:
   redis:
@@ -8,8 +9,7 @@ services:
     container_name: REDIS
     hostname: redis
     image: redis/redis-stack-server:${REDIS_VERSION:-latest}
-    profiles:
-      - redis
+    profiles: [redis]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -18,16 +18,20 @@ services:
       - TZ=${TZ:-}
       - REDIS_ARGS=--save 10 1 --appendonly yes
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.100
+
   postgres:
     <<: *db-service
     container_name: POSTGRESQL
     hostname: postgres
     image: postgres:${POSTGRES_VERSION:-alpine}
-    profiles: [ postgresql ]
+    profiles: [postgresql]
     environment:
       - TZ=${TZ:-}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
@@ -44,23 +48,24 @@ services:
 #        "-c", "config_file=/etc/postgresql/postgresql.conf",
       ]
     healthcheck:
-      test: [
-        "CMD-SHELL",
-        "PGPASSWORD=${POSTGRES_PASSWORD:-postgres} pg_isready \
-           -U ${POSTGRES_USER:-postgres} \
-           -h localhost \
-           -d ${POSTGRES_DB:-postgres}"
-      ]
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=${POSTGRES_PASSWORD:-postgres} pg_isready -U ${POSTGRES_USER:-postgres} -h localhost -d ${POSTGRES_DB:-postgres}"
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.101
+
   mysql:
     <<: *db-service
     container_name: MYSQL
     hostname: mysql
     image: mysql:${MYSQL_VERSION:-latest}
-    profiles:
-      - mysql
+    profiles: [mysql]
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     environment:
@@ -73,21 +78,20 @@ services:
       - ../../data/mysql:/var/lib/mysql
       - ../../logs/mysql:/var/log/mysql
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mysqladmin ping -h127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD:-12345}"
-        ]
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD:-12345}"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.102
+
   mongodb:
     <<: *db-service
     container_name: MONGODB
     hostname: mongodb
     image: mongo:${MONGODB_VERSION:-latest}
-    profiles:
-      - mongodb
+    profiles: [mongodb]
     ports:
       - "${MONGODB_PORT:-27017}:27017"
     environment:
@@ -100,19 +104,21 @@ services:
       test:
         [
           "CMD-SHELL",
-          "mongosh \"mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@localhost:${MONGODB_PORT:-27017}/admin\" \
-                    --eval \"db.adminCommand('ping')\" --quiet || exit 1"
+          "mongosh \"mongodb://${MONGODB_ROOT_USERNAME:-root}:${MONGODB_ROOT_PASSWORD:-12345}@localhost:${MONGODB_PORT:-27017}/admin\" --eval \"db.adminCommand('ping')\" --quiet || exit 1"
         ]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.103
+
   mariadb:
     <<: *db-service
     container_name: MARIADB
     hostname: mariadb
     image: mariadb:${MARIADB_VERSION:-latest}
-    profiles:
-      - mariadb
+    profiles: [mariadb]
     ports:
       - "${MARIADB_PORT:-3306}:3306"
     environment:
@@ -125,17 +131,20 @@ services:
       - ../../data/mariadb:/var/lib/mysql
       - ../../logs/mariadb:/var/log/mysql
     healthcheck:
-      test: [ "CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MARIADB_ROOT_PASSWORD:-12345}" ]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MARIADB_ROOT_PASSWORD:-12345}"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.104
+
   elasticsearch:
     <<: *db-service
     container_name: ELASTICSEARCH
     hostname: elasticsearch
     image: elasticsearch:${ELASTICSEARCH_VERSION:-8.18.0}
-    profiles:
-      - elasticsearch
+    profiles: [elasticsearch]
     ports:
       - "${ELASTICSEARCH_PORT:-9200}:9200"
     environment:
@@ -147,7 +156,10 @@ services:
     volumes:
       - ../../data/elasticsearch:/usr/share/elasticsearch/data
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      datastore:
+        ipv4_address: 172.30.0.105
