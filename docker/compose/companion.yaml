@@ -9,6 +9,7 @@ services:
     volumes:
       - ../../configuration/apache:/etc/share/vhosts/apache
       - ../../configuration/nginx:/etc/share/vhosts/nginx
+      - ../extras:/etc/share/vhosts/node
       - ../../configuration/ssl:/etc/mkcert
       - "../../configuration/ssh:/home/${USER}/.ssh:ro"
       - "${PROJECT_DIR:-./../../../application}:/app"
