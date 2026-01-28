@@ -21,16 +21,12 @@ ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/games:$PATH" \
     GIT_CREDENTIAL_STORE=/home/${USERNAME}/.git-credentials
 
 ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/node-cli-setup.sh /usr/local/bin/cli-setup.sh
-ADD https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh /usr/local/bin/git-default
 RUN apk add --no-cache bash && \
-  chmod +x /usr/local/bin/git-default && \
   NODE_VERSION="$(node -v | sed 's/^v//')" && \
   bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${NODE_VERSION}" && \
   rm -f /usr/local/bin/cli-setup.sh && \
   rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
 USER ${USERNAME}
-
 RUN sudo /usr/local/bin/git-default
-
 WORKDIR /app
