@@ -7,7 +7,37 @@ set -euo pipefail
 ###############################################################################
 # 0. PATHS & CONSTANTS
 ###############################################################################
-DIR="$(dirname -- "$(readlink -f -- "$0" || greadlink -f -- "$0")")"
+# Resolve script directory portably (Linux/macOS/WSL)
+_realpath() {
+  local p="$1"
+
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$p"; return 0
+  fi
+
+  # GNU readlink
+  if readlink -f / >/dev/null 2>&1; then
+    readlink -f "$p"; return 0
+  fi
+
+  # macOS with coreutils
+  if command -v greadlink >/dev/null 2>&1; then
+    greadlink -f "$p"; return 0
+  fi
+
+  # python fallback
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$p"; return 0
+  fi
+
+  # last resort: absolute physical dir + basename
+  local d b
+  d="$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P)" || return 1
+  b="$(basename -- "$p")"
+  printf '%s/%s\n' "$d" "$b"
+}
+
+DIR="$(dirname -- "$(_realpath "$0")")"
 CFG="$DIR/docker"
 ENV_MAIN="$DIR/.env"
 ENV_DOCKER="$CFG/.env"
@@ -543,7 +573,7 @@ ca_plan() {
 
 install_ca() {
   local src_ca="$DIR/configuration/rootCA/rootCA.pem"
-  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "install certificate requires sudo"
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "certificate install requires sudo"
   [[ -r "$src_ca" ]] || die "certificate not found: $src_ca"
 
   local family dest updater os_id os_like
@@ -636,7 +666,7 @@ install_ca() {
 }
 
 uninstall_ca() {
-  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "uninstall certificate requires sudo"
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "certificate uninstall requires sudo"
 
   local all=0
   if [[ "${1:-}" == "--all" ]]; then
@@ -841,11 +871,11 @@ compose_has_build() {
       return $?
     fi
     if command -v python3 >/dev/null 2>&1; then
-      python3 - "$svc" <<'PY' <<<"$json"
-import json,sys
-svc=sys.argv[1]
-cfg=json.load(sys.stdin)
-sys.exit(0 if cfg.get("services",{}).get(svc,{}).get("build") is not None else 1)
+      COMPOSE_CFG_JSON="$json" python3 - "$svc" <<'PY'
+import json, os, sys
+svc = sys.argv[1]
+cfg = json.loads(os.environ.get("COMPOSE_CFG_JSON", "") or "{}")
+sys.exit(0 if cfg.get("services", {}).get(svc, {}).get("build") is not None else 1)
 PY
       return $?
     fi
@@ -869,11 +899,11 @@ compose_image_for_service() {
       return 0
     fi
     if command -v python3 >/dev/null 2>&1; then
-      python3 - "$svc" <<'PY' <<<"$json"
-import json,sys
-svc=sys.argv[1]
-cfg=json.load(sys.stdin)
-print(cfg.get("services",{}).get(svc,{}).get("image","") or "")
+      COMPOSE_CFG_JSON="$json" python3 - "$svc" <<'PY'
+import json, os, sys
+svc = sys.argv[1]
+cfg = json.loads(os.environ.get("COMPOSE_CFG_JSON", "") or "{}")
+print(cfg.get("services", {}).get(svc, {}).get("image", "") or "")
 PY
       return 0
     fi
@@ -987,7 +1017,17 @@ cmd_rebuild() {
 }
 
 cmd_config() { docker_compose config; }
-cmd_tools() { docker exec -it SERVER_TOOLS bash; }
+
+docker_shell() {
+  local c="${1:-}"
+  [[ -n "$c" ]] || die "container name required"
+  if docker exec "$c" sh -lc 'command -v bash >/dev/null 2>&1' >/dev/null 2>&1; then
+    exec docker exec -it "$c" bash
+  else
+    exec docker exec -it "$c" sh
+  fi
+}
+cmd_tools() { docker_shell SERVER_TOOLS; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_lazydocker() { cmd_lzd; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
@@ -1009,24 +1049,33 @@ cmd_setup() {
   esac
 }
 
-cmd_install() {
+cmd_certificate() {
   case ${1:-} in
-  certificate) install_ca ;;
-  *) die "install <certificate>" ;;
-  esac
-}
-
-cmd_uninstall() {
-  case ${1:-} in
-  certificate)
-    shift
+  install)
+    shift || true
+    install_ca "${@:-}"
+    ;;
+  uninstall|remove|rm)
+    shift || true
     uninstall_ca "${@:-}"
     ;;
   *)
-    die "uninstall <certificate> [--all]"
+    die "certificate <install|uninstall [--all]>"
     ;;
   esac
 }
+
+# Backward-compatible aliases (not documented)
+cmd_install() {
+  # deprecated: use `server certificate install`
+  cmd_certificate install "${@:-}"
+}
+
+cmd_uninstall() {
+  # deprecated: use `server certificate uninstall`
+  cmd_certificate uninstall "${@:-}"
+}
+
 
 cmd_doctor() {
   # Quick environment diagnostics + install hints (best-effort).
@@ -1128,7 +1177,7 @@ cmd_doctor() {
   fi
 
   printf "\n%bTips%b\n" "$CYAN" "$NC"
-  printf "  - Use: %bserver uninstall certificate --all%b if you switched distros/paths.\n" "$BLUE" "$NC"
+  printf "  - Use: %bserver certificate uninstall --all%b if you switched distros/paths.\n" "$BLUE" "$NC"
   printf "  - Use: %bserver run --publish 8025:8025%b to expose ports for 'server run open'.\n" "$BLUE" "$NC"
 }
 
@@ -1531,8 +1580,8 @@ ${CYAN}Setup commands:${NC}
 
 ${CYAN}Misc:${NC}
   doctor                     Diagnose environment + show install hints
-  install certificate         Install local rootCA
-  uninstall certificate [--all] Remove local rootCA (use --all to remove from all known anchor paths)
+  certificate install         Install local rootCA
+  certificate uninstall [--all] Remove local rootCA (use --all to remove from all known anchor paths)
   run [stop|rm|ps|logs|open] [opts]  Build/run/exec ad-hoc Dockerfile in current dir
   notify watch [container]   Watch SERVER_TOOLS notifications and show desktop popups
   notify test "T" "B"        Send a test notification into SERVER_TOOLS
@@ -1544,7 +1593,7 @@ EOF
 # 7. MAIN
 ###############################################################################
 main() {
-  need docker readlink,greadlink
+  need docker
   ensure_files_exist "/docker/.env" "/configuration/php/php.ini" "/.env"
 
   [[ $# -gt 0 ]] || {
