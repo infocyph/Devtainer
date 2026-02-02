@@ -14,6 +14,7 @@ x-php-service: &php-service
     - ../conf/openssl.cnf:/etc/ssl/openssl.cnf
     - ../../configuration/php/php.ini:/usr/local/etc/php/conf.d/99-overrides.ini
     - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+    - "${HOME}/.gitconfig:/home/${USER}/.gitconfig:ro"
   depends_on:
     - server-tools
   healthcheck:

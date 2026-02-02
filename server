@@ -128,7 +128,13 @@ docker_compose() {
     done
   fi
 
-  docker compose \
+  # Prefer Docker Compose v2 ("docker compose"), fallback to v1 ("docker-compose")
+  local -a dc=(docker compose)
+  if ! docker compose version >/dev/null 2>&1; then
+    dc=(docker-compose)
+  fi
+
+  "${dc[@]}" \
     --project-directory "$DIR" \
     -f "$COMPOSE_FILE" \
     "${files[@]}" \
@@ -261,7 +267,7 @@ fix_perms() {
 
   chmod 2777 "$DIR/data"
   mkdir -p "$DIR/data/cloudbeaver" "$DIR/data/mysql" "$DIR/data/postgresql" "$DIR/data/mongo" \
-    "$DIR/data/mariadb" "$DIR/data/elasticsearch" "$DIR/data/redis" \
+    "$DIR/data/mariadb" "$DIR/data/elasticsearch" "$DIR/data/redis" "$DIR/data/mailpit" \
     "$DIR/data/redis-insight" "$DIR/data/kibana"
   find "$DIR/data" -mindepth 1 -maxdepth 1 -type d -exec chmod 2777 {} +
   find "$DIR/data" -type f -exec chmod 666 {} +
@@ -360,7 +366,7 @@ declare -A SERVICES=(
 declare -a SERVICE_ORDER=(ELASTICSEARCH MYSQL MARIADB MONGODB REDIS POSTGRESQL)
 
 declare -A PROFILE_ENV=(
-  [elasticsearch]="ELASTICSEARCH_VERSION=8.18.0 ELASTICSEARCH_PORT=9200"
+  [elasticsearch]="ELASTICSEARCH_VERSION=9.2.4 ELASTICSEARCH_PORT=9200"
   [mysql]="MYSQL_VERSION=latest MYSQL_PORT=3306 MYSQL_ROOT_PASSWORD=12345 MYSQL_USER=infocyph MYSQL_PASSWORD=12345 MYSQL_DATABASE=localdb"
   [mariadb]="MARIADB_VERSION=latest MARIADB_PORT=3306 MARIADB_ROOT_PASSWORD=12345 MARIADB_USER=infocyph MARIADB_PASSWORD=12345 MARIADB_DATABASE=localdb"
   [mongodb]="MONGODB_VERSION=latest MONGODB_PORT=27017 MONGODB_ROOT_USERNAME=root MONGODB_ROOT_PASSWORD=12345"
@@ -490,18 +496,265 @@ env_init() {
   printf "%bConfiguration saved!%b\n" "$GREEN" "$NC"
 }
 
-install_ca() {
-  local src="$DIR/configuration/rootCA/rootCA.pem"
-  local dest=/usr/local/share/ca-certificates/rootCA.crt
-  [[ $EUID -eq 0 ]] || die "install certificate requires sudo"
-  [[ -r $src ]] || die "certificate not found: $src"
-
-  printf "%bInstalling root CA…%b\n" "$CYAN" "$NC"
-  install -m 644 "$src" "$dest"
-  command -v update-ca-certificates &>/dev/null && update-ca-certificates
-  command -v trust &>/dev/null && trust extract-compat
-  printf "%bRoot CA installed → %s%b\n" "$GREEN" "$dest" "$NC"
+# ─────────────────────────────────────────────────────────────────────────────
+# Root CA helpers (cross-distro)
+# ─────────────────────────────────────────────────────────────────────────────
+detect_os_family() {
+  local os_id="unknown" os_like="unknown"
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    os_id="${ID:-unknown}"
+    os_like="${ID_LIKE:-unknown}"
+  fi
+  printf '%s|%s
+' "$os_id" "$os_like"
 }
+
+# Decide destination path + update mechanism. Echo: family|dest|updater
+ca_plan() {
+  local os_id os_like
+  IFS='|' read -r os_id os_like < <(detect_os_family)
+
+  case " $os_id $os_like " in
+    *" debian "*|*" ubuntu "*|*" linuxmint "*|*" pop "*|*" raspbian "*)
+      printf 'debian|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
+'
+      ;;
+    *" alpine "*)
+      printf 'alpine|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
+'
+      ;;
+    *" fedora "*|*" rhel "*|*" redhat "*|*" centos "*|*" rocky "*|*" alma "*|*" amzn "*|*" amazon "*|*" sles "*|*" suse "*)
+      printf 'rhel|/etc/pki/ca-trust/source/anchors/rootCA.crt|update-ca-trust
+'
+      ;;
+    *" arch "*|*" manjaro "*)
+      printf 'arch|/etc/ca-certificates/trust-source/anchors/rootCA.crt|trust
+'
+      ;;
+    *)
+      # best default: Debian-style location (works on many distros even if updater differs)
+      printf 'fallback|/usr/local/share/ca-certificates/rootCA.crt|
+'
+      ;;
+  esac
+}
+
+install_ca() {
+  local src_ca="$DIR/configuration/rootCA/rootCA.pem"
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "install certificate requires sudo"
+  [[ -r "$src_ca" ]] || die "certificate not found: $src_ca"
+
+  local family dest updater os_id os_like
+  IFS='|' read -r os_id os_like < <(detect_os_family)
+  IFS='|' read -r family dest updater < <(ca_plan)
+
+  printf "%bInstalling root CA…%b
+" "$CYAN" "$NC"
+  printf "%bDetected OS%b: id=%s like=%s → %s
+" "$CYAN" "$NC" "$os_id" "$os_like" "$family"
+
+  install -d -m 755 "$(dirname "$dest")"
+  install -m 644 "$src_ca" "$dest"
+  printf "%b✔ Copied%b → %s
+" "$GREEN" "$NC" "$dest"
+
+  case "$family" in
+    debian|alpine)
+      if command -v update-ca-certificates >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+        if update-ca-certificates; then
+          printf "%b✔ Trust store updated%b
+" "$GREEN" "$NC"
+          printf "%bNote:%b If you see \"rehash: skipping ca-certificates.crt…\", that’s normal (it’s a bundle).
+" "$YELLOW" "$NC"
+        else
+          printf "%bWARN%b: update-ca-certificates failed. CA is installed but may not be active yet.
+" "$YELLOW" "$NC" >&2
+        fi
+      else
+        printf "%bWARN%b: update-ca-certificates not found. CA is installed but auto-update is unavailable.
+" "$YELLOW" "$NC" >&2
+      fi
+
+      # Optional p11-kit sync: best-effort only (can be missing helper on minimal installs)
+      if command -v trust >/dev/null 2>&1; then
+        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+        if trust extract-compat >/dev/null 2>&1; then
+          printf "%b✔ p11-kit trust synced%b
+" "$GREEN" "$NC"
+        else
+          printf "%bWARN%b: trust extract-compat failed (helper missing on some installs). Skipping.
+" "$YELLOW" "$NC" >&2
+        fi
+      else
+        printf "%bINFO%b: 'trust' not found — skipping p11-kit sync.
+" "$YELLOW" "$NC"
+      fi
+      ;;
+    rhel)
+      if command -v update-ca-trust >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+        if update-ca-trust extract; then
+          printf "%b✔ Trust store updated%b
+" "$GREEN" "$NC"
+        else
+          printf "%bWARN%b: update-ca-trust extract failed. CA is installed but may not be active yet.
+" "$YELLOW" "$NC" >&2
+        fi
+      else
+        printf "%bWARN%b: update-ca-trust not found. CA is installed but auto-update is unavailable.
+" "$YELLOW" "$NC" >&2
+      fi
+      ;;
+    arch)
+      if command -v trust >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
+        if trust extract-compat >/dev/null 2>&1; then
+          printf "%b✔ Trust store updated%b
+" "$GREEN" "$NC"
+        else
+          printf "%bWARN%b: trust extract-compat failed. CA is installed, but trust sync may be incomplete.
+" "$YELLOW" "$NC" >&2
+        fi
+      else
+        printf "%bWARN%b: 'trust' not found. CA is installed, but trust sync is unavailable.
+" "$YELLOW" "$NC" >&2
+      fi
+      ;;
+    *)
+      printf "%bINFO%b: Unknown distro; CA copied to %s.
+" "$YELLOW" "$NC" "$dest"
+      printf "%bINFO%b: You may need to update trust store manually for your OS.
+" "$YELLOW" "$NC"
+      ;;
+  esac
+
+  printf "%bRoot CA installed%b → %s
+" "$GREEN" "$NC" "$dest"
+}
+
+uninstall_ca() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "uninstall certificate requires sudo"
+
+  local all=0
+  if [[ "${1:-}" == "--all" ]]; then
+    all=1
+    shift
+  fi
+
+  local family dest updater os_id os_like
+  IFS='|' read -r os_id os_like < <(detect_os_family)
+  IFS='|' read -r family dest updater < <(ca_plan)
+
+  printf "%bUninstalling root CA…%b
+" "$CYAN" "$NC"
+  printf "%bDetected OS%b: id=%s like=%s → %s
+" "$CYAN" "$NC" "$os_id" "$os_like" "$family"
+
+  # Always remove the planned destination first
+  local removed=0
+  if [[ -e "$dest" ]]; then
+    rm -f "$dest"
+    removed=$((removed+1))
+    printf "%b✔ Removed%b → %s
+" "$GREEN" "$NC" "$dest"
+  else
+    printf "%bINFO%b: CA file not found at %s (nothing to remove)
+" "$YELLOW" "$NC" "$dest"
+  fi
+
+  # Optional: remove from all common anchor locations (for people who switched distros/paths)
+  if ((all)); then
+    printf "%bScanning all known CA anchor paths…%b
+" "$CYAN" "$NC"
+    local f
+    for f in \
+      /usr/local/share/ca-certificates/rootCA.crt \
+      /usr/local/share/ca-certificates/rootCA.pem \
+      /etc/pki/ca-trust/source/anchors/rootCA.crt \
+      /etc/pki/ca-trust/source/anchors/rootCA.pem \
+      /etc/ca-certificates/trust-source/anchors/rootCA.crt \
+      /etc/ca-certificates/trust-source/anchors/rootCA.pem
+    do
+      [[ "$f" == "$dest" ]] && continue
+      if [[ -e "$f" ]]; then
+        rm -f "$f"
+        removed=$((removed+1))
+        printf "%b✔ Removed%b → %s
+" "$GREEN" "$NC" "$f"
+      fi
+    done
+  fi
+
+  # Refresh trust store (best-effort, do not fail uninstall)
+  case "$family" in
+    debian|alpine)
+      if command -v update-ca-certificates >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+        update-ca-certificates || printf "%bWARN%b: update-ca-certificates failed.
+" "$YELLOW" "$NC" >&2
+      else
+        printf "%bWARN%b: update-ca-certificates not found; trust store not refreshed.
+" "$YELLOW" "$NC" >&2
+      fi
+
+      # Optional p11-kit sync: best-effort only
+      if command -v trust >/dev/null 2>&1; then
+        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+        trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed. Skipping.
+" "$YELLOW" "$NC" >&2
+      fi
+      ;;
+    rhel)
+      if command -v update-ca-trust >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+        update-ca-trust extract || printf "%bWARN%b: update-ca-trust extract failed.
+" "$YELLOW" "$NC" >&2
+      else
+        printf "%bWARN%b: update-ca-trust not found; trust store not refreshed.
+" "$YELLOW" "$NC" >&2
+      fi
+      ;;
+    arch)
+      if command -v trust >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
+        trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed.
+" "$YELLOW" "$NC" >&2
+      else
+        printf "%bWARN%b: 'trust' not found; trust store not refreshed.
+" "$YELLOW" "$NC" >&2
+      fi
+      ;;
+    *)
+      # If unknown family, try what exists
+      if command -v update-ca-certificates >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+        update-ca-certificates || true
+      fi
+      if command -v update-ca-trust >/dev/null 2>&1; then
+        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+        update-ca-trust extract || true
+      fi
+      if command -v trust >/dev/null 2>&1; then
+        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+        trust extract-compat >/dev/null 2>&1 || true
+      fi
+      printf "%bINFO%b: Unknown distro; removed CA file(s) if present. Refresh trust store manually if needed.
+" "$YELLOW" "$NC"
+      ;;
+  esac
+
+  if ((removed)); then
+    printf "%bRoot CA uninstalled%b (removed %d file(s))
+" "$GREEN" "$NC" "$removed"
+  else
+    printf "%bRoot CA already absent%b (no files removed)
+" "$YELLOW" "$NC"
+  fi
+}
+
 
 add_required_env() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
@@ -756,7 +1009,128 @@ cmd_setup() {
   esac
 }
 
-cmd_install() { [[ ${2:-} == certificate ]] && install_ca || die "install certificate"; }
+cmd_install() {
+  case ${1:-} in
+  certificate) install_ca ;;
+  *) die "install <certificate>" ;;
+  esac
+}
+
+cmd_uninstall() {
+  case ${1:-} in
+  certificate)
+    shift
+    uninstall_ca "${@:-}"
+    ;;
+  *)
+    die "uninstall <certificate> [--all]"
+    ;;
+  esac
+}
+
+cmd_doctor() {
+  # Quick environment diagnostics + install hints (best-effort).
+  local os_id os_like family
+  IFS='|' read -r os_id os_like < <(detect_os_family)
+
+  printf "%bDoctor%b — environment checks\n" "$MAGENTA" "$NC"
+  printf "%bOS%b: id=%s like=%s\n" "$CYAN" "$NC" "$os_id" "$os_like"
+
+  _ok()   { printf "  %b✔%b %s\n" "$GREEN" "$NC" "$*"; }
+  _warn() { printf "  %b!%b %s\n" "$YELLOW" "$NC" "$*"; }
+  _bad()  { printf "  %b✘%b %s\n" "$RED" "$NC" "$*"; }
+
+  _has() { command -v "$1" >/dev/null 2>&1; }
+
+  # Docker CLI + daemon
+  if _has docker; then
+    _ok "docker: $(docker --version 2>/dev/null || echo 'present')"
+    if docker info >/dev/null 2>&1; then
+      _ok "docker daemon: reachable"
+    else
+      _bad "docker daemon: not reachable (is Docker running? permissions?)"
+    fi
+  else
+    _bad "docker: missing"
+  fi
+
+  # Compose
+  if docker compose version >/dev/null 2>&1; then
+    _ok "compose: docker compose"
+  elif _has docker-compose; then
+    _ok "compose: docker-compose"
+  else
+    _bad "compose: missing (need docker compose plugin or docker-compose)"
+  fi
+
+  # Common tools used by this script
+  for c in awk sed grep find sort; do
+    _has "$c" && _ok "$c: present" || _bad "$c: missing"
+  done
+
+  # Optional-but-valuable tools
+  _has mkcert && _ok "mkcert: present" || _warn "mkcert: not found (needed for local TLS automation)"
+  _has openssl && _ok "openssl: present" || _warn "openssl: not found (useful for debugging certs)"
+  (_has wget || _has curl) && _ok "http client: present" || _warn "http client: missing (wget/curl recommended)"
+
+  # Devtainer layout checks
+  [[ -f "$COMPOSE_FILE" ]] && _ok "compose file: $COMPOSE_FILE" || _bad "compose file missing: $COMPOSE_FILE"
+  [[ -f "$ENV_DOCKER" ]] && _ok "env file: $ENV_DOCKER" || _warn "env file missing: $ENV_DOCKER (run: server setup init)"
+
+  # CA tooling by distro family
+  if _has update-ca-certificates; then
+    _ok "update-ca-certificates: present"
+  else
+    _warn "update-ca-certificates: not found (Debian/Ubuntu/Alpine CA updates)"
+  fi
+
+  if _has update-ca-trust; then
+    _ok "update-ca-trust: present"
+  else
+    _warn "update-ca-trust: not found (RHEL/Fedora CA updates)"
+  fi
+
+  if _has trust; then
+    _ok "trust (p11-kit): present"
+  else
+    _warn "trust (p11-kit): not found (Arch / p11-kit trust store)"
+  fi
+
+  printf "\n%bInstall hints%b (best guess)\n" "$CYAN" "$NC"
+
+  # Package manager heuristics (print commands, do NOT execute)
+  if _has apt-get; then
+    _warn "Debian/Ubuntu:"
+    printf "    sudo apt-get update && sudo apt-get install -y ca-certificates curl wget openssl p11-kit\n"
+    printf "    # Docker: https://docs.docker.com/engine/install/\n"
+    printf "    sudo apt-get install -y docker-compose-plugin\n"
+  elif _has dnf; then
+    _warn "Fedora/RHEL (dnf):"
+    printf "    sudo dnf install -y ca-certificates curl wget openssl p11-kit-trust\n"
+    printf "    # Docker: https://docs.docker.com/engine/install/\n"
+  elif _has yum; then
+    _warn "RHEL/CentOS (yum):"
+    printf "    sudo yum install -y ca-certificates curl wget openssl p11-kit-trust\n"
+    printf "    # Docker: https://docs.docker.com/engine/install/\n"
+  elif _has pacman; then
+    _warn "Arch:"
+    printf "    sudo pacman -Syu --noconfirm ca-certificates curl wget openssl p11-kit\n"
+    printf "    # Docker + compose plugin per Arch wiki\n"
+  elif _has apk; then
+    _warn "Alpine:"
+    printf "    sudo apk add --no-cache ca-certificates curl wget openssl p11-kit\n"
+    printf "    sudo update-ca-certificates\n"
+  elif _has zypper; then
+    _warn "SUSE:"
+    printf "    sudo zypper install -y ca-certificates curl wget openssl p11-kit\n"
+  else
+    _warn "No known package manager detected. Install: docker + compose + ca-certificates + openssl + p11-kit."
+  fi
+
+  printf "\n%bTips%b\n" "$CYAN" "$NC"
+  printf "  - Use: %bserver uninstall certificate --all%b if you switched distros/paths.\n" "$BLUE" "$NC"
+  printf "  - Use: %bserver run --publish 8025:8025%b to expose ports for 'server run open'.\n" "$BLUE" "$NC"
+}
 
 ###############################################################################
 # NOTIFY
@@ -858,6 +1232,280 @@ cmd_notify() {
   esac
 }
 
+open_url() {
+  local url="${1:-}"
+  [[ -n "$url" ]] || return 0
+
+  # WSL/Windows helpers first when available
+  if grep -qi microsoft /proc/version 2>/dev/null; then
+    if command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 || true
+      return 0
+    fi
+    if command -v cmd.exe >/dev/null 2>&1; then
+      cmd.exe /c start "" "$url" >/dev/null 2>&1 || true
+      return 0
+    fi
+  fi
+
+  if command -v xdg-open >/dev/null 2>&1; then
+    (xdg-open "$url" >/dev/null 2>&1 &)
+    return 0
+  fi
+  if command -v open >/dev/null 2>&1; then
+    (open "$url" >/dev/null 2>&1 &)
+    return 0
+  fi
+  if command -v powershell >/dev/null 2>&1; then
+    (powershell -NoProfile -Command "Start-Process '$url'" >/dev/null 2>&1 &)
+    return 0
+  fi
+
+  printf "%bINFO%b: open this URL manually → %s\n" "$YELLOW" "$NC" "$url"
+}
+
+###############################################################################
+# RUN (ad-hoc Dockerfile runner)
+###############################################################################
+hash_short() {
+  local s="$1"
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$s" | sha1sum | awk '{print substr($1,1,8)}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$s" | shasum -a 1 | awk '{print substr($1,1,8)}'
+  else
+    # cksum is POSIX; not cryptographic but stable enough for naming
+    printf '%s' "$s" | cksum | awk '{print $1}'
+  fi
+}
+
+run_slug() {
+  local dir="$1" base hash
+  base="$(basename "$dir" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-')"
+  hash="$(hash_short "$dir")"
+  printf '%s-%s' "$base" "$hash"
+}
+
+run_plan() {
+  local dir="$1" slug
+  slug="$(run_slug "$dir")"
+  printf '%s|%s|%s\n' \
+    "server-run-${slug}" \
+    "${slug}:local" \
+    "$dir"
+}
+
+run_find_container() {
+  local dir="$1"
+  docker ps -a --filter "label=com.infocyph.server.run=1" \
+    --filter "label=com.infocyph.server.dir=${dir}" \
+    --format '{{.Names}}' | head -n 1
+}
+
+run_build() {
+  local tag="$1" dir="$2"
+  printf "%b[run]%b Building image %b%s%b from %s\n" "$CYAN" "$NC" "$BLUE" "$tag" "$NC" "$dir"
+  docker build -t "$tag" "$dir"
+}
+
+run_start() {
+  local name="$1" tag="$2" dir="$3" keepalive="$4"
+  shift 4 || true
+
+  local -a args=(docker run -d --name "$name"
+    --label "com.infocyph.server.run=1"
+    --label "com.infocyph.server.dir=$dir"
+    --label "com.infocyph.server.tag=$tag"
+    -w /workspace
+    -v "$dir:/workspace"
+  )
+
+  # Publish ports: pass multiple --publish/-p flags from cmd_run
+  local pub
+  for pub in "$@"; do
+    [[ -n "$pub" ]] || continue
+    args+=(-p "$pub")
+  done
+
+  if [[ "$keepalive" == 1 ]]; then
+    # keep container alive even if image CMD exits (good for "exec bash" workflow)
+    args+=(--entrypoint sh "$tag" -c "trap : TERM INT; sleep infinity & wait")
+  else
+    args+=("$tag")
+  fi
+
+  printf "%b[run]%b Starting container %b%s%b
+" "$CYAN" "$NC" "$BLUE" "$name" "$NC"
+  "${args[@]}" >/dev/null
+}
+
+run_exec_shell() {
+  local name="$1"
+  if docker exec "$name" sh -lc 'command -v bash >/dev/null 2>&1' >/dev/null 2>&1; then
+    exec docker exec -it "$name" bash
+  else
+    exec docker exec -it "$name" sh
+  fi
+}
+
+cmd_run() {
+  # Usage:
+  #   server run                          # build+start+exec for current directory
+  #   server run stop                     # stop container for current directory
+  #   server run rm                       # remove container (and image tag) for current directory
+  #   server run ps                       # list run containers
+  #   server run logs                     # follow logs for current directory container
+  #   server run open [--port P]          # open first published port (or P) in browser
+  #
+  # Flags:
+  #   --dir PATH                          # run from another directory
+  #   --name NAME                         # container name override
+  #   --tag TAG                           # image tag override
+  #   --no-build                          # do not build
+  #   --no-keepalive                      # run image's default CMD/ENTRYPOINT
+  #   -p|--publish HOST:CONT              # publish port (repeatable)
+  #   --port CONT_PORT                    # for 'open': choose container port
+  #   --path /some/path                   # for 'open': default /
+  #   --https                             # for 'open': use https
+  local action="shell" dir="$PWD" name="" tag="" nobuild=0 keepalive=1
+  local -a publish=()
+  local open_port="" open_path="/" open_proto="http"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      stop|rm|ps|shell|logs|open) action="$1"; shift ;;
+      --dir) dir="${2:-}"; shift 2 ;;
+      --name) name="${2:-}"; shift 2 ;;
+      --tag) tag="${2:-}"; shift 2 ;;
+      --no-build) nobuild=1; shift ;;
+      --no-keepalive) keepalive=0; shift ;;
+      -p|--publish) publish+=("${2:-}"); shift 2 ;;
+      --port) open_port="${2:-}"; shift 2 ;;
+      --path) open_path="${2:-/}"; shift 2 ;;
+      --https) open_proto="https"; shift ;;
+      --http) open_proto="http"; shift ;;
+      *) break ;;
+    esac
+  done
+
+  dir="$(cd "$dir" && pwd)"
+  IFS='|' read -r def_name def_tag _def_dir < <(run_plan "$dir")
+  name="${name:-$def_name}"
+  tag="${tag:-$def_tag}"
+
+  # Helper to locate "the" container for a dir
+  _find_for_dir() {
+    local found
+    found="$(run_find_container "$dir" || true)"
+    if [[ -n "$found" ]]; then
+      printf '%s' "$found"
+      return 0
+    fi
+    # fallback to explicit name if present
+    if docker inspect "$name" >/dev/null 2>&1; then
+      printf '%s' "$name"
+      return 0
+    fi
+    return 1
+  }
+
+  case "$action" in
+    ps)
+      docker ps -a --filter "label=com.infocyph.server.run=1" \
+        --format 'table {{.Names}}	{{.Image}}	{{.Status}}	{{.Labels}}'
+      return 0
+      ;;
+    stop)
+      local existing
+      existing="$(_find_for_dir)" || die "no run container found for: $dir"
+      docker stop "$existing" >/dev/null
+      printf "%b[run]%b Stopped %s
+" "$GREEN" "$NC" "$existing"
+      return 0
+      ;;
+    logs)
+      local existing
+      existing="$(_find_for_dir)" || die "no run container found for: $dir"
+      exec docker logs -f "$existing"
+      ;;
+    open)
+      local existing line addr hp url
+      existing="$(_find_for_dir)" || die "no run container found for: $dir"
+
+      # Normalize path
+      [[ -n "$open_path" ]] || open_path="/"
+      [[ "$open_path" == /* ]] || open_path="/$open_path"
+
+      if [[ -n "$open_port" ]]; then
+        line="$(docker port "$existing" "$open_port" 2>/dev/null | head -n 1 || true)"
+        # Some docker versions require proto, try tcp as fallback
+        [[ -n "$line" ]] || line="$(docker port "$existing" "${open_port}/tcp" 2>/dev/null | head -n 1 || true)"
+      else
+        line="$(docker port "$existing" 2>/dev/null | head -n 1 || true)"
+      fi
+
+      if [[ -z "$line" ]]; then
+        printf "%b[run]%b No published ports found.
+" "$YELLOW" "$NC"
+        printf "%b[run]%b Tip: start with %bserver run --publish 8025:8025%b then %bserver run open%b
+" \
+          "$YELLOW" "$NC" "$BLUE" "$NC" "$BLUE" "$NC"
+        return 1
+      fi
+
+      # Example line: "8025/tcp -> 0.0.0.0:8025"
+      addr="${line##*-> }"
+      hp="${addr##*:}"
+
+      url="${open_proto}://localhost:${hp}${open_path}"
+      open_url "$url"
+      printf "%b[run]%b Opened: %s
+" "$GREEN" "$NC" "$url"
+      return 0
+      ;;
+    rm)
+      local existing img
+      existing="$(_find_for_dir)" || true
+      if [[ -n "${existing:-}" ]]; then
+        img="$(docker inspect -f '{{.Config.Image}}' "$existing" 2>/dev/null || true)"
+        docker rm -f "$existing" >/dev/null
+        printf "%b[run]%b Removed container %s
+" "$GREEN" "$NC" "$existing"
+        if [[ -n "${img:-}" ]]; then
+          docker rmi -f "$img" >/dev/null 2>&1 || true
+          printf "%b[run]%b Removed image %s
+" "$GREEN" "$NC" "$img"
+        fi
+      else
+        printf "%b[run]%b No container found for %s
+" "$YELLOW" "$NC" "$dir"
+      fi
+      return 0
+      ;;
+    shell|*)
+      if ((nobuild == 0)); then
+        run_build "$tag" "$dir"
+      else
+        printf "%b[run]%b Skipping build (--no-build)
+" "$YELLOW" "$NC"
+      fi
+
+      if docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -q true; then
+        printf "%b[run]%b Container already running: %s
+" "$GREEN" "$NC" "$name"
+      else
+        # if a previous container with same name exists but stopped, remove it
+        if docker inspect "$name" >/dev/null 2>&1; then
+          docker rm -f "$name" >/dev/null 2>&1 || true
+        fi
+        run_start "$name" "$tag" "$dir" "$keepalive" "${publish[@]}"
+      fi
+
+      run_exec_shell "$name"
+      ;;
+  esac
+}
+
 cmd_help() {
   cat <<EOF
 ${CYAN}Usage:${NC} server [--verbose|-v] <command> [options]
@@ -882,7 +1530,10 @@ ${CYAN}Setup commands:${NC}
   setup profiles             Setup database profiles
 
 ${CYAN}Misc:${NC}
-  install certificate        Install local rootCA
+  doctor                     Diagnose environment + show install hints
+  install certificate         Install local rootCA
+  uninstall certificate [--all] Remove local rootCA (use --all to remove from all known anchor paths)
+  run [stop|rm|ps|logs|open] [opts]  Build/run/exec ad-hoc Dockerfile in current dir
   notify watch [container]   Watch SERVER_TOOLS notifications and show desktop popups
   notify test "T" "B"        Send a test notification into SERVER_TOOLS
   help                       This help

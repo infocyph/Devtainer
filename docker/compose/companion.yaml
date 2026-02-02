@@ -11,10 +11,15 @@ services:
       - ../../configuration/nginx:/etc/share/vhosts/nginx
       - ../extras:/etc/share/vhosts/node
       - ../../configuration/ssl:/etc/mkcert
-      - "../../configuration/ssh:/home/${USER}/.ssh:ro"
+      - "../../configuration/ssh:/home/root/.ssh:ro"
       - "${PROJECT_DIR:-./../../../application}:/app"
       - ../../configuration/rootCA:/etc/share/rootCA
       - /var/run/docker.sock:/var/run/docker.sock
+      - ../../configuration/sops/config:/etc/share/sops/config
+      - ../../configuration/sops/global:/etc/share/sops/global
+      - ../../configuration/sops/keys:/etc/share/sops/keys
+      - "${SOP_REPO:-./../../../sops-repo}:/etc/share/vhosts/sops"
+      - "${HOME}/.gitconfig:/home/root/.gitconfig:ro"
     networks:
       backend:
         ipv4_address: 172.29.0.10
@@ -38,3 +43,29 @@ services:
     networks:
       backend:
         ipv4_address: 172.29.0.11
+
+  mailpit:
+    container_name: MAILPIT
+    hostname: mailpit
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-}
+      - MP_MAX_MESSAGES=5000
+      - MP_DATABASE=/data/mailpit.db
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    volumes:
+      - ../../data/mailpit:/data
+    depends_on:
+      - server-tools
+    networks:
+      frontend:
+        ipv4_address: 172.28.0.12
+      backend:
+        ipv4_address: 172.29.0.12
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://127.0.0.1:8025/" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
