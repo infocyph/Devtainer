@@ -53,10 +53,13 @@ services:
       - TZ=${TZ:-}
       - MP_MAX_MESSAGES=5000
       - MP_DATABASE=/data/mailpit.db
+      - MP_SMTP_TLS_CERT=/certs/local.pem
+      - MP_SMTP_TLS_KEY=/certs/local-key.pem
+      - MP_SMTP_REQUIRE_STARTTLS=true
       - MP_SMTP_AUTH_ACCEPT_ANY=1
-      - MP_SMTP_AUTH_ALLOW_INSECURE=1
     volumes:
       - ../../data/mailpit:/data
+      - ../../configuration/ssl:/certs:ro
     depends_on:
       - server-tools
     networks:

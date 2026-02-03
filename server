@@ -1358,8 +1358,8 @@ run_build() {
 }
 
 run_start() {
-  local name="$1" tag="$2" dir="$3" keepalive="$4"
-  shift 4 || true
+  local name="$1" tag="$2" dir="$3" keepalive="$4" sock="$5"
+  shift 5 || true
 
   local -a args=(docker run -d --name "$name"
     --label "com.infocyph.server.run=1"
@@ -1368,6 +1368,12 @@ run_start() {
     -w /workspace
     -v "$dir:/workspace"
   )
+
+  # Optional: allow containers to talk to Docker (DinD via host socket)
+  if [[ "${sock:-0}" == 1 ]]; then
+    [[ -S /var/run/docker.sock ]] || printf "%b[run]%b Warning: /var/run/docker.sock not found on host, mount may fail.\n" "$YELLOW" "$NC" >&2
+    args+=(-v "/var/run/docker.sock:/var/run/docker.sock")
+  fi
 
   # Publish ports: pass multiple --publish/-p flags from cmd_run
   local pub
@@ -1412,11 +1418,12 @@ cmd_run() {
   #   --tag TAG                           # image tag override
   #   --no-build                          # do not build
   #   --no-keepalive                      # run image's default CMD/ENTRYPOINT
+  #   --sock                              # mount docker sock: /var/run/docker.sock
   #   -p|--publish HOST:CONT              # publish port (repeatable)
   #   --port CONT_PORT                    # for 'open': choose container port
   #   --path /some/path                   # for 'open': default /
   #   --https                             # for 'open': use https
-  local action="shell" dir="$PWD" name="" tag="" nobuild=0 keepalive=1
+  local action="shell" dir="$PWD" name="" tag="" nobuild=0 keepalive=1 sock=0
   local -a publish=()
   local open_port="" open_path="/" open_proto="http"
 
@@ -1428,6 +1435,7 @@ cmd_run() {
       --tag) tag="${2:-}"; shift 2 ;;
       --no-build) nobuild=1; shift ;;
       --no-keepalive) keepalive=0; shift ;;
+      --sock) sock=1; shift ;;
       -p|--publish) publish+=("${2:-}"); shift 2 ;;
       --port) open_port="${2:-}"; shift 2 ;;
       --path) open_path="${2:-/}"; shift 2 ;;
@@ -1547,7 +1555,7 @@ cmd_run() {
         if docker inspect "$name" >/dev/null 2>&1; then
           docker rm -f "$name" >/dev/null 2>&1 || true
         fi
-        run_start "$name" "$tag" "$dir" "$keepalive" "${publish[@]}"
+        run_start "$name" "$tag" "$dir" "$keepalive" "$sock" "${publish[@]}"
       fi
 
       run_exec_shell "$name"
