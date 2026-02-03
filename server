@@ -1195,7 +1195,7 @@ cmd_certificate() {
   case ${1:-} in
   install)
     shift || true
-    install_ca "${@:-}"
+    install_ca
     ;;
   uninstall|remove|rm)
     shift || true
