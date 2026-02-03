@@ -1163,7 +1163,16 @@ conf_php_container() {
 conf_app_paths() {
   local f="$1"
   [[ -r "$f" ]] || return 0
-  grep -Eo '/app/[^;[:space:]"'\''<>]+' "$f" 2>/dev/null || true
+
+  LC_ALL=C awk '
+    {
+      s=$0
+      while (match(s, /\/app\/[^;[:space:]"'\''<>]+/)) {
+        print substr(s, RSTART, RLENGTH)
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+  ' "$f" | LC_ALL=C sort -u || true
 }
 
 normalize_app_root() {
