@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Force bash even if invoked via sh
+if [ -z "${BASH_VERSION:-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi
+
 # server – Devtainer CLI launcher
 # shellcheck disable=SC1090,SC2155
 
@@ -1033,9 +1036,148 @@ cmd_lazydocker() { cmd_lzd; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
 cmd_cli() { cmd_core "$@"; }
 cmd_core() {
-  local domain=${1:-}
-  [[ -n $domain ]] || die "Usage: server core <domain>"
-  launch_php "$domain"
+  # Usage:
+  #   server core <domain>  -> open PHP for that domain (legacy)
+  #   server core           -> auto-detect project by current directory and open correct PHP container
+
+  local domain="${1:-}"
+  if [[ -n "${domain}" ]]; then
+    launch_php "${domain}"
+    return
+  fi
+
+  core_auto
+}
+
+# ------------------------------------------------------------
+# core auto-detect (host PWD -> /app in php container)
+# ------------------------------------------------------------
+core_auto() {
+  local pwd="${PWD}"
+
+  local working_dir
+  if [[ -n "${WORKING_DIR:-}" ]]; then
+    working_dir="${WORKING_DIR}"
+  elif [[ -d /opt/project/Devtainer ]]; then
+    working_dir="/opt/project/Devtainer"
+  else
+    working_dir="${DIR}"
+  fi
+
+  # Compose default: "${PROJECT_DIR:-./../../../application}:/app"
+  local host_app_root
+  if [[ -n "${PROJECT_DIR:-}" ]]; then
+    host_app_root="${PROJECT_DIR}"
+  else
+    host_app_root="${working_dir%/}/../application"
+  fi
+
+  local -a confs=()
+  local d f
+  for d in     "${working_dir%/}/configuration/nginx"     "${working_dir%/}/configuration/apache"     "${working_dir%/}/configuration/httpd"     "${working_dir%/}/configuration/apache/sites-enabled"     "${working_dir%/}/configuration/httpd/sites-enabled"
+  do
+    [[ -d "$d" ]] || continue
+    while IFS= read -r -d "" f; do
+      confs+=("$f")
+    done < <(find "$d" -maxdepth 1 -type f -name "*.conf" -print0 2>/dev/null || true)
+  done
+
+  local best_container="" best_host_root="" best_len=0
+
+  local php c_src app_path app_root rel host_proj l
+  for f in "${confs[@]:-}"; do
+    php="$(conf_php_container "$f")"
+    [[ -n "$php" ]] || continue
+
+    # Real host source for /app from the php container (beats env guesses)
+    c_src="$(docker_mount_source "$php" "/app")"
+    [[ -n "$c_src" ]] || c_src="$host_app_root"
+
+    while IFS= read -r app_path; do
+      [[ -n "$app_path" ]] || continue
+
+      app_root="$(normalize_app_root "$app_path")"
+      [[ "$app_root" == /app/* ]] || continue
+
+      rel="${app_root#/app/}"
+      [[ -n "$rel" ]] || continue
+
+      host_proj="${c_src%/}/$rel"
+
+      if [[ "$pwd" == "$host_proj"* ]]; then
+        l="${#host_proj}"
+        if (( l > best_len )); then
+          best_len="$l"
+          best_container="$php"
+          best_host_root="$c_src"
+        fi
+      fi
+    done < <(conf_app_paths "$f")
+  done
+
+  # Fallback: if PWD is under /app mount of a running PHP_* container, use it
+  if [[ -z "$best_container" ]]; then
+    local cand cand_src
+    cand="$(docker ps --format "{{.Names}}" | grep -m1 "^PHP_" || true)"
+    if [[ -n "$cand" ]]; then
+      cand_src="$(docker_mount_source "$cand" "/app")"
+      if [[ -n "$cand_src" && "$pwd" == "${cand_src%/}/"* ]]; then
+        best_container="$cand"
+        best_host_root="$cand_src"
+      fi
+    fi
+  fi
+
+  [[ -n "$best_container" ]] || die "No matching domain for current directory: $pwd (try: server core <domain>)"
+
+  # Map host PWD -> /app path inside container
+  local rel_path container_path
+  rel_path="${pwd#${best_host_root%/}/}"
+  container_path="/app/${rel_path}"
+
+  printf "%b[core]%b %s -> %s:%s
+" "$CYAN" "$NC" "$pwd" "$best_container" "$container_path"
+
+  docker exec -it "$best_container" sh -lc "cd \"$container_path\" 2>/dev/null || exit 1; if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi"
+}
+
+conf_php_container() {
+  local f="$1"
+
+  # 1) Apache: SetHandler "proxy:fcgi://PHP_8.4:9000"
+  local c=""
+  c="$(grep -Eo 'proxy:fcgi://[^:/"]+' "$f" 2>/dev/null | head -n1 | sed 's#proxy:fcgi://##')"
+  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+
+  # 2) Nginx: fastcgi_pass PHP_8.4:9000;
+  c="$(grep -Eo 'fastcgi_pass[[:space:]]+[^;:]+:9000' "$f" 2>/dev/null | head -n1 | awk '{print $2}' | sed 's/:9000$//')"
+  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+
+  # 3) Nginx: proxy_cookie_domain PHP_8.4 local.example;
+  c="$(grep -Eo 'proxy_cookie_domain[[:space:]]+[^[:space:];]+' "$f" 2>/dev/null | head -n1 | awk '{print $2}')"
+  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+
+  return 0
+}
+
+conf_app_paths() {
+  local f="$1"
+  [[ -r "$f" ]] || return 0
+  grep -Eo '/app/[^;[:space:]"'\''<>]+' "$f" 2>/dev/null || true
+}
+
+normalize_app_root() {
+  local p="$1"
+  p="${p%/}"
+  p="${p%/public}"
+  p="${p%/public_html}"
+  p="${p%/dist}"
+  printf "%s" "$p"
+}
+
+docker_mount_source() {
+  local container="$1" dest="$2"
+  docker inspect -f '{{range .Mounts}}{{if eq .Destination "'"$dest"'"}}{{.Source}}{{end}}{{end}}' "$container" 2>/dev/null || true
 }
 
 cmd_setup() {
@@ -1319,11 +1461,11 @@ open_url() {
 hash_short() {
   local s="$1"
   if command -v sha1sum >/dev/null 2>&1; then
-    printf '%s' "$s" | sha1sum | awk '{print substr($1,1,8)}'
+    printf '%s' "$s" | sha1sum | cut -c1-8
   elif command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$s" | shasum -a 1 | awk '{print substr($1,1,8)}'
+    printf '%s' "$s" | shasum -a 1 | cut -c1-8
   else
-    # cksum is POSIX; not cryptographic but stable enough for naming
+    # POSIX fallback; stable (not cryptographic)
     printf '%s' "$s" | cksum | awk '{print $1}'
   fi
 }
