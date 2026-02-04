@@ -1040,26 +1040,118 @@ normalize_service() {
 }
 
 cmd_rebuild() {
-  local -a targets=()
-  local arg svc
+  local -a targets=() all_svcs=()
+  local arg svc img
   declare -A seen=()
 
-  (($# > 0)) || die "Usage: server rebuild all | server rebuild <service|container...>"
+  # -----------------------------
+  # helper: add a service once
+  # -----------------------------
+  _add_target() {
+    local s="$1"
+    [[ -n "$s" ]] || return 0
+    [[ -n "${seen[$s]:-}" ]] && return 0
+    seen[$s]=1
+    targets+=("$s")
+  }
 
-  if [[ "${1,,}" == "all" ]]; then
+  # -----------------------------
+  # helper: trim
+  # -----------------------------
+  _trim() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+  }
+
+  # -----------------------------
+  # helper: interactive selection (comma separated, supports ranges)
+  # accepts: "all" or "1,3,5-7" or mix with names "nginx,2,5-6"
+  # -----------------------------
+  _pick_targets_interactive() {
+    mapfile -t all_svcs < <(docker_compose config --services 2>/dev/null)
+    [[ ${#all_svcs[@]} -gt 0 ]] || die "No services found (docker compose config --services failed?)"
+
+    echo
+    echo "Select services to rebuild (comma separated; ranges allowed)."
+    echo "Examples: 1,3,5-7   |   nginx,2,5-6   |   all"
+    echo
+
+    local i
+    for i in "${!all_svcs[@]}"; do
+      printf "  %2d) %s\n" "$((i+1))" "${all_svcs[$i]}"
+    done
+
+    echo
+    local sel
+    read -r -p "Pick: " sel
+    sel="$(_trim "${sel:-}")"
+    [[ -n "$sel" ]] || die "No selection provided."
+
+    if [[ "${sel,,}" == "all" ]]; then
+      for svc in "${all_svcs[@]}"; do _add_target "$svc"; done
+      return 0
+    fi
+
+    # split by comma
+    local IFS=,
+    for arg in $sel; do
+      arg="$(_trim "$arg")"
+      [[ -n "$arg" ]] || continue
+
+      # range like 3-7
+      if [[ "$arg" =~ ^[0-9]+-[0-9]+$ ]]; then
+        local a b
+        a="${arg%-*}"; b="${arg#*-}"
+        (( a >= 1 )) || continue
+        (( b >= 1 )) || continue
+        (( a <= b )) || { local t="$a"; a="$b"; b="$t"; }
+
+        local n
+        for ((n=a; n<=b; n++)); do
+          (( n >= 1 && n <= ${#all_svcs[@]} )) || continue
+          _add_target "${all_svcs[$((n-1))]}"
+        done
+        continue
+      fi
+
+      # single index
+      if [[ "$arg" =~ ^[0-9]+$ ]]; then
+        local n="$arg"
+        (( n >= 1 && n <= ${#all_svcs[@]} )) || continue
+        _add_target "${all_svcs[$((n-1))]}"
+        continue
+      fi
+
+      # treat as service/container name
+      svc="$(resolve_service "$arg")"
+      [[ -n "$svc" ]] && _add_target "$svc"
+    done
+
+    [[ ${#targets[@]} -gt 0 ]] || die "No valid services selected."
+  }
+
+  # -----------------------------
+  # build target list
+  # -----------------------------
+  if (($# == 0)); then
+    _pick_targets_interactive
+  elif [[ "${1,,}" == "all" ]]; then
     mapfile -t targets < <(docker_compose config --services 2>/dev/null)
     [[ ${#targets[@]} -gt 0 ]] || die "No services found (docker compose config --services failed?)"
   else
     for arg in "$@"; do
       svc="$(resolve_service "$arg")"
       [[ -n "$svc" ]] || continue
-      [[ -n "${seen[$svc]:-}" ]] && continue
-      seen[$svc]=1
-      targets+=("$svc")
+      _add_target "$svc"
     done
+    [[ ${#targets[@]} -gt 0 ]] || die "No valid services provided."
   fi
 
-  local img
+  # -----------------------------
+  # rebuild each target
+  # -----------------------------
   for svc in "${targets[@]}"; do
     [[ -n "$svc" ]] || continue
     compose_service_exists "$svc" || die "Unknown service/container: '$svc'"
@@ -1085,6 +1177,7 @@ cmd_rebuild() {
 
     dc_up -d --no-deps --force-recreate "$svc"
   done
+  dc_up -d
 }
 
 cmd_config() { docker_compose config; }
