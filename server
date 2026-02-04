@@ -15,22 +15,26 @@ _realpath() {
   local p="$1"
 
   if command -v realpath >/dev/null 2>&1; then
-    realpath "$p"; return 0
+    realpath "$p"
+    return 0
   fi
 
   # GNU readlink
   if readlink -f / >/dev/null 2>&1; then
-    readlink -f "$p"; return 0
+    readlink -f "$p"
+    return 0
   fi
 
   # macOS with coreutils
   if command -v greadlink >/dev/null 2>&1; then
-    greadlink -f "$p"; return 0
+    greadlink -f "$p"
+    return 0
   fi
 
   # python fallback
   if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$p"; return 0
+    python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$p"
+    return 0
   fi
 
   # last resort: absolute physical dir + basename
@@ -550,27 +554,27 @@ ca_plan() {
   IFS='|' read -r os_id os_like < <(detect_os_family)
 
   case " $os_id $os_like " in
-    *" debian "*|*" ubuntu "*|*" linuxmint "*|*" pop "*|*" raspbian "*)
-      printf 'debian|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
+  *" debian "* | *" ubuntu "* | *" linuxmint "* | *" pop "* | *" raspbian "*)
+    printf 'debian|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
 '
-      ;;
-    *" alpine "*)
-      printf 'alpine|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
+    ;;
+  *" alpine "*)
+    printf 'alpine|/usr/local/share/ca-certificates/rootCA.crt|update-ca-certificates
 '
-      ;;
-    *" fedora "*|*" rhel "*|*" redhat "*|*" centos "*|*" rocky "*|*" alma "*|*" amzn "*|*" amazon "*|*" sles "*|*" suse "*)
-      printf 'rhel|/etc/pki/ca-trust/source/anchors/rootCA.crt|update-ca-trust
+    ;;
+  *" fedora "* | *" rhel "* | *" redhat "* | *" centos "* | *" rocky "* | *" alma "* | *" amzn "* | *" amazon "* | *" sles "* | *" suse "*)
+    printf 'rhel|/etc/pki/ca-trust/source/anchors/rootCA.crt|update-ca-trust
 '
-      ;;
-    *" arch "*|*" manjaro "*)
-      printf 'arch|/etc/ca-certificates/trust-source/anchors/rootCA.crt|trust
+    ;;
+  *" arch "* | *" manjaro "*)
+    printf 'arch|/etc/ca-certificates/trust-source/anchors/rootCA.crt|trust
 '
-      ;;
-    *)
-      # best default: Debian-style location (works on many distros even if updater differs)
-      printf 'fallback|/usr/local/share/ca-certificates/rootCA.crt|
+    ;;
+  *)
+    # best default: Debian-style location (works on many distros even if updater differs)
+    printf 'fallback|/usr/local/share/ca-certificates/rootCA.crt|
 '
-      ;;
+    ;;
   esac
 }
 
@@ -594,74 +598,74 @@ install_ca() {
 " "$GREEN" "$NC" "$dest"
 
   case "$family" in
-    debian|alpine)
-      if command -v update-ca-certificates >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
-        if update-ca-certificates; then
-          printf "%b✔ Trust store updated%b
+  debian | alpine)
+    if command -v update-ca-certificates >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+      if update-ca-certificates; then
+        printf "%b✔ Trust store updated%b
 " "$GREEN" "$NC"
-          printf "%bNote:%b If you see \"rehash: skipping ca-certificates.crt…\", that’s normal (it’s a bundle).
+        printf "%bNote:%b If you see \"rehash: skipping ca-certificates.crt…\", that’s normal (it’s a bundle).
 " "$YELLOW" "$NC"
-        else
-          printf "%bWARN%b: update-ca-certificates failed. CA is installed but may not be active yet.
-" "$YELLOW" "$NC" >&2
-        fi
       else
-        printf "%bWARN%b: update-ca-certificates not found. CA is installed but auto-update is unavailable.
+        printf "%bWARN%b: update-ca-certificates failed. CA is installed but may not be active yet.
 " "$YELLOW" "$NC" >&2
       fi
+    else
+      printf "%bWARN%b: update-ca-certificates not found. CA is installed but auto-update is unavailable.
+" "$YELLOW" "$NC" >&2
+    fi
 
-      # Optional p11-kit sync: best-effort only (can be missing helper on minimal installs)
-      if command -v trust >/dev/null 2>&1; then
-        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
-        if trust extract-compat >/dev/null 2>&1; then
-          printf "%b✔ p11-kit trust synced%b
+    # Optional p11-kit sync: best-effort only (can be missing helper on minimal installs)
+    if command -v trust >/dev/null 2>&1; then
+      printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+      if trust extract-compat >/dev/null 2>&1; then
+        printf "%b✔ p11-kit trust synced%b
 " "$GREEN" "$NC"
-        else
-          printf "%bWARN%b: trust extract-compat failed (helper missing on some installs). Skipping.
-" "$YELLOW" "$NC" >&2
-        fi
       else
-        printf "%bINFO%b: 'trust' not found — skipping p11-kit sync.
+        printf "%bWARN%b: trust extract-compat failed (helper missing on some installs). Skipping.
+" "$YELLOW" "$NC" >&2
+      fi
+    else
+      printf "%bINFO%b: 'trust' not found — skipping p11-kit sync.
 " "$YELLOW" "$NC"
-      fi
-      ;;
-    rhel)
-      if command -v update-ca-trust >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
-        if update-ca-trust extract; then
-          printf "%b✔ Trust store updated%b
+    fi
+    ;;
+  rhel)
+    if command -v update-ca-trust >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+      if update-ca-trust extract; then
+        printf "%b✔ Trust store updated%b
 " "$GREEN" "$NC"
-        else
-          printf "%bWARN%b: update-ca-trust extract failed. CA is installed but may not be active yet.
-" "$YELLOW" "$NC" >&2
-        fi
       else
-        printf "%bWARN%b: update-ca-trust not found. CA is installed but auto-update is unavailable.
+        printf "%bWARN%b: update-ca-trust extract failed. CA is installed but may not be active yet.
 " "$YELLOW" "$NC" >&2
       fi
-      ;;
-    arch)
-      if command -v trust >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
-        if trust extract-compat >/dev/null 2>&1; then
-          printf "%b✔ Trust store updated%b
+    else
+      printf "%bWARN%b: update-ca-trust not found. CA is installed but auto-update is unavailable.
+" "$YELLOW" "$NC" >&2
+    fi
+    ;;
+  arch)
+    if command -v trust >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
+      if trust extract-compat >/dev/null 2>&1; then
+        printf "%b✔ Trust store updated%b
 " "$GREEN" "$NC"
-        else
-          printf "%bWARN%b: trust extract-compat failed. CA is installed, but trust sync may be incomplete.
-" "$YELLOW" "$NC" >&2
-        fi
       else
-        printf "%bWARN%b: 'trust' not found. CA is installed, but trust sync is unavailable.
+        printf "%bWARN%b: trust extract-compat failed. CA is installed, but trust sync may be incomplete.
 " "$YELLOW" "$NC" >&2
       fi
-      ;;
-    *)
-      printf "%bINFO%b: Unknown distro; CA copied to %s.
+    else
+      printf "%bWARN%b: 'trust' not found. CA is installed, but trust sync is unavailable.
+" "$YELLOW" "$NC" >&2
+    fi
+    ;;
+  *)
+    printf "%bINFO%b: Unknown distro; CA copied to %s.
 " "$YELLOW" "$NC" "$dest"
-      printf "%bINFO%b: You may need to update trust store manually for your OS.
+    printf "%bINFO%b: You may need to update trust store manually for your OS.
 " "$YELLOW" "$NC"
-      ;;
+    ;;
   esac
 
   printf "%bRoot CA installed%b → %s
@@ -690,7 +694,7 @@ uninstall_ca() {
   local removed=0
   if [[ -e "$dest" ]]; then
     rm -f "$dest"
-    removed=$((removed+1))
+    removed=$((removed + 1))
     printf "%b✔ Removed%b → %s
 " "$GREEN" "$NC" "$dest"
   else
@@ -709,12 +713,11 @@ uninstall_ca() {
       /etc/pki/ca-trust/source/anchors/rootCA.crt \
       /etc/pki/ca-trust/source/anchors/rootCA.pem \
       /etc/ca-certificates/trust-source/anchors/rootCA.crt \
-      /etc/ca-certificates/trust-source/anchors/rootCA.pem
-    do
+      /etc/ca-certificates/trust-source/anchors/rootCA.pem; do
       [[ "$f" == "$dest" ]] && continue
       if [[ -e "$f" ]]; then
         rm -f "$f"
-        removed=$((removed+1))
+        removed=$((removed + 1))
         printf "%b✔ Removed%b → %s
 " "$GREEN" "$NC" "$f"
       fi
@@ -723,60 +726,60 @@ uninstall_ca() {
 
   # Refresh trust store (best-effort, do not fail uninstall)
   case "$family" in
-    debian|alpine)
-      if command -v update-ca-certificates >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
-        update-ca-certificates || printf "%bWARN%b: update-ca-certificates failed.
+  debian | alpine)
+    if command -v update-ca-certificates >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+      update-ca-certificates || printf "%bWARN%b: update-ca-certificates failed.
 " "$YELLOW" "$NC" >&2
-      else
-        printf "%bWARN%b: update-ca-certificates not found; trust store not refreshed.
+    else
+      printf "%bWARN%b: update-ca-certificates not found; trust store not refreshed.
 " "$YELLOW" "$NC" >&2
-      fi
+    fi
 
-      # Optional p11-kit sync: best-effort only
-      if command -v trust >/dev/null 2>&1; then
-        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
-        trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed. Skipping.
+    # Optional p11-kit sync: best-effort only
+    if command -v trust >/dev/null 2>&1; then
+      printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+      trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed. Skipping.
 " "$YELLOW" "$NC" >&2
-      fi
-      ;;
-    rhel)
-      if command -v update-ca-trust >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
-        update-ca-trust extract || printf "%bWARN%b: update-ca-trust extract failed.
+    fi
+    ;;
+  rhel)
+    if command -v update-ca-trust >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+      update-ca-trust extract || printf "%bWARN%b: update-ca-trust extract failed.
 " "$YELLOW" "$NC" >&2
-      else
-        printf "%bWARN%b: update-ca-trust not found; trust store not refreshed.
+    else
+      printf "%bWARN%b: update-ca-trust not found; trust store not refreshed.
 " "$YELLOW" "$NC" >&2
-      fi
-      ;;
-    arch)
-      if command -v trust >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
-        trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed.
+    fi
+    ;;
+  arch)
+    if command -v trust >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (trust extract-compat)…\n" "$CYAN" "$NC"
+      trust extract-compat >/dev/null 2>&1 || printf "%bWARN%b: trust extract-compat failed.
 " "$YELLOW" "$NC" >&2
-      else
-        printf "%bWARN%b: 'trust' not found; trust store not refreshed.
+    else
+      printf "%bWARN%b: 'trust' not found; trust store not refreshed.
 " "$YELLOW" "$NC" >&2
-      fi
-      ;;
-    *)
-      # If unknown family, try what exists
-      if command -v update-ca-certificates >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
-        update-ca-certificates || true
-      fi
-      if command -v update-ca-trust >/dev/null 2>&1; then
-        printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
-        update-ca-trust extract || true
-      fi
-      if command -v trust >/dev/null 2>&1; then
-        printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
-        trust extract-compat >/dev/null 2>&1 || true
-      fi
-      printf "%bINFO%b: Unknown distro; removed CA file(s) if present. Refresh trust store manually if needed.
+    fi
+    ;;
+  *)
+    # If unknown family, try what exists
+    if command -v update-ca-certificates >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-certificates)…\n" "$CYAN" "$NC"
+      update-ca-certificates || true
+    fi
+    if command -v update-ca-trust >/dev/null 2>&1; then
+      printf "%bUpdating trust store%b (update-ca-trust extract)…\n" "$CYAN" "$NC"
+      update-ca-trust extract || true
+    fi
+    if command -v trust >/dev/null 2>&1; then
+      printf "%bSyncing p11-kit%b (trust extract-compat)…\n" "$CYAN" "$NC"
+      trust extract-compat >/dev/null 2>&1 || true
+    fi
+    printf "%bINFO%b: Unknown distro; removed CA file(s) if present. Refresh trust store manually if needed.
 " "$YELLOW" "$NC"
-      ;;
+    ;;
   esac
 
   if ((removed)); then
@@ -787,7 +790,6 @@ uninstall_ca() {
 " "$YELLOW" "$NC"
   fi
 }
-
 
 add_required_env() {
   update_env "$ENV_DOCKER" WORKING_DIR "$DIR"
@@ -1034,7 +1036,34 @@ cmd_tools() { docker_shell SERVER_TOOLS; }
 cmd_lzd() { docker exec -it SERVER_TOOLS lazydocker; }
 cmd_lazydocker() { cmd_lzd; }
 cmd_http() { [[ ${1:-} == reload ]] && http_reload; }
-cmd_cli() { cmd_core "$@"; }
+cmd_cli() {
+  local ctr="${1:-}"
+  shift || true
+
+  [[ -n "$ctr" ]] || die "Usage: server cli <container> [cmd...]"
+
+  docker inspect "$ctr" >/dev/null 2>&1 || die "Container not found: $ctr"
+  docker inspect -f '{{.State.Running}}' "$ctr" 2>/dev/null | grep -qx true || die "Container not running: $ctr"
+
+  # If user provided a command, run it; otherwise open an interactive shell.
+  if [[ "$#" -gt 0 ]]; then
+    local cmd="$*"
+    docker exec -it "$ctr" sh -lc '
+      if command -v bash >/dev/null 2>&1; then
+        exec bash --login -lc "$1"
+      fi
+      exec sh -lc "$1"
+    ' sh "$cmd"
+    return
+  fi
+
+  docker exec -it "$ctr" sh -lc '
+    if command -v bash >/dev/null 2>&1; then
+      exec bash --login
+    fi
+    exec sh
+  '
+}
 cmd_core() {
   # Usage:
   #   server core <domain>  -> open PHP for that domain (legacy)
@@ -1074,8 +1103,7 @@ core_auto() {
 
   local -a confs=()
   local d f
-  for d in     "${working_dir%/}/configuration/nginx"     "${working_dir%/}/configuration/apache"     "${working_dir%/}/configuration/httpd"     "${working_dir%/}/configuration/apache/sites-enabled"     "${working_dir%/}/configuration/httpd/sites-enabled"
-  do
+  for d in "${working_dir%/}/configuration/nginx" "${working_dir%/}/configuration/apache" "${working_dir%/}/configuration/httpd" "${working_dir%/}/configuration/apache/sites-enabled" "${working_dir%/}/configuration/httpd/sites-enabled"; do
     [[ -d "$d" ]] || continue
     while IFS= read -r -d "" f; do
       confs+=("$f")
@@ -1106,7 +1134,7 @@ core_auto() {
 
       if [[ "$pwd" == "$host_proj"* ]]; then
         l="${#host_proj}"
-        if (( l > best_len )); then
+        if ((l > best_len)); then
           best_len="$l"
           best_container="$php"
           best_host_root="$c_src"
@@ -1147,15 +1175,24 @@ conf_php_container() {
   # 1) Apache: SetHandler "proxy:fcgi://PHP_8.4:9000"
   local c=""
   c="$(grep -Eo 'proxy:fcgi://[^:/"]+' "$f" 2>/dev/null | head -n1 | sed 's#proxy:fcgi://##')"
-  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+  [[ -n "$c" ]] && {
+    printf "%s" "$c"
+    return 0
+  }
 
   # 2) Nginx: fastcgi_pass PHP_8.4:9000;
   c="$(grep -Eo 'fastcgi_pass[[:space:]]+[^;:]+:9000' "$f" 2>/dev/null | head -n1 | awk '{print $2}' | sed 's/:9000$//')"
-  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+  [[ -n "$c" ]] && {
+    printf "%s" "$c"
+    return 0
+  }
 
   # 3) Nginx: proxy_cookie_domain PHP_8.4 local.example;
   c="$(grep -Eo 'proxy_cookie_domain[[:space:]]+[^[:space:];]+' "$f" 2>/dev/null | head -n1 | awk '{print $2}')"
-  [[ -n "$c" ]] && { printf "%s" "$c"; return 0; }
+  [[ -n "$c" ]] && {
+    printf "%s" "$c"
+    return 0
+  }
 
   return 0
 }
@@ -1206,7 +1243,7 @@ cmd_certificate() {
     shift || true
     install_ca
     ;;
-  uninstall|remove|rm)
+  uninstall | remove | rm)
     shift || true
     uninstall_ca "${@:-}"
     ;;
@@ -1227,7 +1264,6 @@ cmd_uninstall() {
   cmd_certificate uninstall "${@:-}"
 }
 
-
 cmd_doctor() {
   # Quick environment diagnostics + install hints (best-effort).
   local os_id os_like family
@@ -1236,9 +1272,9 @@ cmd_doctor() {
   printf "%bDoctor%b — environment checks\n" "$MAGENTA" "$NC"
   printf "%bOS%b: id=%s like=%s\n" "$CYAN" "$NC" "$os_id" "$os_like"
 
-  _ok()   { printf "  %b✔%b %s\n" "$GREEN" "$NC" "$*"; }
+  _ok() { printf "  %b✔%b %s\n" "$GREEN" "$NC" "$*"; }
   _warn() { printf "  %b!%b %s\n" "$YELLOW" "$NC" "$*"; }
-  _bad()  { printf "  %b✘%b %s\n" "$RED" "$NC" "$*"; }
+  _bad() { printf "  %b✘%b %s\n" "$RED" "$NC" "$*"; }
 
   _has() { command -v "$1" >/dev/null 2>&1; }
 
@@ -1580,19 +1616,55 @@ cmd_run() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      stop|rm|ps|shell|logs|open) action="$1"; shift ;;
-      --dir) dir="${2:-}"; shift 2 ;;
-      --name) name="${2:-}"; shift 2 ;;
-      --tag) tag="${2:-}"; shift 2 ;;
-      --no-build) nobuild=1; shift ;;
-      --no-keepalive) keepalive=0; shift ;;
-      --sock) sock=1; shift ;;
-      -p|--publish) publish+=("${2:-}"); shift 2 ;;
-      --port) open_port="${2:-}"; shift 2 ;;
-      --path) open_path="${2:-/}"; shift 2 ;;
-      --https) open_proto="https"; shift ;;
-      --http) open_proto="http"; shift ;;
-      *) break ;;
+    stop | rm | ps | shell | logs | open)
+      action="$1"
+      shift
+      ;;
+    --dir)
+      dir="${2:-}"
+      shift 2
+      ;;
+    --name)
+      name="${2:-}"
+      shift 2
+      ;;
+    --tag)
+      tag="${2:-}"
+      shift 2
+      ;;
+    --no-build)
+      nobuild=1
+      shift
+      ;;
+    --no-keepalive)
+      keepalive=0
+      shift
+      ;;
+    --sock)
+      sock=1
+      shift
+      ;;
+    -p | --publish)
+      publish+=("${2:-}")
+      shift 2
+      ;;
+    --port)
+      open_port="${2:-}"
+      shift 2
+      ;;
+    --path)
+      open_path="${2:-/}"
+      shift 2
+      ;;
+    --https)
+      open_proto="https"
+      shift
+      ;;
+    --http)
+      open_proto="http"
+      shift
+      ;;
+    *) break ;;
     esac
   done
 
@@ -1618,99 +1690,99 @@ cmd_run() {
   }
 
   case "$action" in
-    ps)
-      docker ps -a --filter "label=com.infocyph.server.run=1" \
-        --format 'table {{.Names}}	{{.Image}}	{{.Status}}	{{.Labels}}'
-      return 0
-      ;;
-    stop)
-      local existing
-      existing="$(_find_for_dir)" || die "no run container found for: $dir"
-      docker stop "$existing" >/dev/null
-      printf "%b[run]%b Stopped %s
+  ps)
+    docker ps -a --filter "label=com.infocyph.server.run=1" \
+      --format 'table {{.Names}}	{{.Image}}	{{.Status}}	{{.Labels}}'
+    return 0
+    ;;
+  stop)
+    local existing
+    existing="$(_find_for_dir)" || die "no run container found for: $dir"
+    docker stop "$existing" >/dev/null
+    printf "%b[run]%b Stopped %s
 " "$GREEN" "$NC" "$existing"
-      return 0
-      ;;
-    logs)
-      local existing
-      existing="$(_find_for_dir)" || die "no run container found for: $dir"
-      exec docker logs -f "$existing"
-      ;;
-    open)
-      local existing line addr hp url
-      existing="$(_find_for_dir)" || die "no run container found for: $dir"
+    return 0
+    ;;
+  logs)
+    local existing
+    existing="$(_find_for_dir)" || die "no run container found for: $dir"
+    exec docker logs -f "$existing"
+    ;;
+  open)
+    local existing line addr hp url
+    existing="$(_find_for_dir)" || die "no run container found for: $dir"
 
-      # Normalize path
-      [[ -n "$open_path" ]] || open_path="/"
-      [[ "$open_path" == /* ]] || open_path="/$open_path"
+    # Normalize path
+    [[ -n "$open_path" ]] || open_path="/"
+    [[ "$open_path" == /* ]] || open_path="/$open_path"
 
-      if [[ -n "$open_port" ]]; then
-        line="$(docker port "$existing" "$open_port" 2>/dev/null | head -n 1 || true)"
-        # Some docker versions require proto, try tcp as fallback
-        [[ -n "$line" ]] || line="$(docker port "$existing" "${open_port}/tcp" 2>/dev/null | head -n 1 || true)"
-      else
-        line="$(docker port "$existing" 2>/dev/null | head -n 1 || true)"
-      fi
+    if [[ -n "$open_port" ]]; then
+      line="$(docker port "$existing" "$open_port" 2>/dev/null | head -n 1 || true)"
+      # Some docker versions require proto, try tcp as fallback
+      [[ -n "$line" ]] || line="$(docker port "$existing" "${open_port}/tcp" 2>/dev/null | head -n 1 || true)"
+    else
+      line="$(docker port "$existing" 2>/dev/null | head -n 1 || true)"
+    fi
 
-      if [[ -z "$line" ]]; then
-        printf "%b[run]%b No published ports found.
+    if [[ -z "$line" ]]; then
+      printf "%b[run]%b No published ports found.
 " "$YELLOW" "$NC"
-        printf "%b[run]%b Tip: start with %bserver run --publish 8025:8025%b then %bserver run open%b
+      printf "%b[run]%b Tip: start with %bserver run --publish 8025:8025%b then %bserver run open%b
 " \
-          "$YELLOW" "$NC" "$BLUE" "$NC" "$BLUE" "$NC"
-        return 1
-      fi
+        "$YELLOW" "$NC" "$BLUE" "$NC" "$BLUE" "$NC"
+      return 1
+    fi
 
-      # Example line: "8025/tcp -> 0.0.0.0:8025"
-      addr="${line##*-> }"
-      hp="${addr##*:}"
+    # Example line: "8025/tcp -> 0.0.0.0:8025"
+    addr="${line##*-> }"
+    hp="${addr##*:}"
 
-      url="${open_proto}://localhost:${hp}${open_path}"
-      open_url "$url"
-      printf "%b[run]%b Opened: %s
+    url="${open_proto}://localhost:${hp}${open_path}"
+    open_url "$url"
+    printf "%b[run]%b Opened: %s
 " "$GREEN" "$NC" "$url"
-      return 0
-      ;;
-    rm)
-      local existing img
-      existing="$(_find_for_dir)" || true
-      if [[ -n "${existing:-}" ]]; then
-        img="$(docker inspect -f '{{.Config.Image}}' "$existing" 2>/dev/null || true)"
-        docker rm -f "$existing" >/dev/null
-        printf "%b[run]%b Removed container %s
+    return 0
+    ;;
+  rm)
+    local existing img
+    existing="$(_find_for_dir)" || true
+    if [[ -n "${existing:-}" ]]; then
+      img="$(docker inspect -f '{{.Config.Image}}' "$existing" 2>/dev/null || true)"
+      docker rm -f "$existing" >/dev/null
+      printf "%b[run]%b Removed container %s
 " "$GREEN" "$NC" "$existing"
-        if [[ -n "${img:-}" ]]; then
-          docker rmi -f "$img" >/dev/null 2>&1 || true
-          printf "%b[run]%b Removed image %s
+      if [[ -n "${img:-}" ]]; then
+        docker rmi -f "$img" >/dev/null 2>&1 || true
+        printf "%b[run]%b Removed image %s
 " "$GREEN" "$NC" "$img"
-        fi
-      else
-        printf "%b[run]%b No container found for %s
+      fi
+    else
+      printf "%b[run]%b No container found for %s
 " "$YELLOW" "$NC" "$dir"
-      fi
-      return 0
-      ;;
-    shell|*)
-      if ((nobuild == 0)); then
-        run_build "$tag" "$dir"
-      else
-        printf "%b[run]%b Skipping build (--no-build)
+    fi
+    return 0
+    ;;
+  shell | *)
+    if ((nobuild == 0)); then
+      run_build "$tag" "$dir"
+    else
+      printf "%b[run]%b Skipping build (--no-build)
 " "$YELLOW" "$NC"
-      fi
+    fi
 
-      if docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -q true; then
-        printf "%b[run]%b Container already running: %s
+    if docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -q true; then
+      printf "%b[run]%b Container already running: %s
 " "$GREEN" "$NC" "$name"
-      else
-        # if a previous container with same name exists but stopped, remove it
-        if docker inspect "$name" >/dev/null 2>&1; then
-          docker rm -f "$name" >/dev/null 2>&1 || true
-        fi
-        run_start "$name" "$tag" "$dir" "$keepalive" "$sock" "${publish[@]}"
+    else
+      # if a previous container with same name exists but stopped, remove it
+      if docker inspect "$name" >/dev/null 2>&1; then
+        docker rm -f "$name" >/dev/null 2>&1 || true
       fi
+      run_start "$name" "$tag" "$dir" "$keepalive" "$sock" "${publish[@]}"
+    fi
 
-      run_exec_shell "$name"
-      ;;
+    run_exec_shell "$name"
+    ;;
   esac
 }
 
@@ -1785,7 +1857,7 @@ main() {
   }
 
   case "${1,,}" in
-  php | composer) exec "$DIR/bin/$1" "${@:2}" ;;
+  php | composer | node | npm | npx) exec "$DIR/bin/$1" "${@:2}" ;;
   pg | pg_restore | pg-restore | pgrestore | pg_dump | pgdump | pg-dump | psql) exec "$DIR/bin/pg" "${@:2}" ;;
   maria | mariadb | mariadbdump | mariadb-dump | mariadb_dump) exec "$DIR/bin/maria" "${@:2}" ;;
   my | mysql | mysqldump | mysql-dump | mysql_dump) exec "$DIR/bin/my" "${@:2}" ;;
