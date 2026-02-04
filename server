@@ -463,7 +463,7 @@ process_all() {
 }
 
 ###############################################################################
-# 4. LAUNCH PHP CONTAINER INSIDE DOCROOT
+# 4a. LAUNCH PHP CONTAINER INSIDE DOCROOT
 ###############################################################################
 launch_php() {
   local domain=$1 suffix
@@ -492,6 +492,72 @@ launch_php() {
 
   php=$(echo "$php" | tr ' \n' '\n' | awk 'NF && !seen[$0]++' | paste -sd' ' -)
   docker exec -it "$php" bash --login -c "cd '$docroot' && exec bash"
+}
+
+###############################################################################
+# 4b. LAUNCH NODE CONTAINER (always /app)
+###############################################################################
+launch_node() {
+  local domain="${1:-}"
+  [[ -n "$domain" ]] || die "Usage: server core <domain>"
+
+  local nconf="$DIR/configuration/nginx/$domain.conf"
+  [[ -f "$nconf" ]] || die "No Nginx config for $domain"
+
+  # Expect: proxy_pass http://node_<token>:<port>;
+  local upstream host token ctr
+  upstream="$(
+    grep -m1 -Eo 'proxy_pass[[:space:]]+http://[^;]+' "$nconf" 2>/dev/null |
+      awk '{print $2}' |
+      sed 's|^http://||'
+  )"
+
+  [[ -n "${upstream:-}" ]] || die "Could not detect node upstream for $domain"
+  host="${upstream%%:*}" # node_resume_sparkle_localhost
+
+  [[ -n "${host:-}" ]] || die "Could not parse upstream host for $domain"
+
+  # Standard Devtainer mapping: node_<token> -> NODE_<TOKEN>
+  ctr=""
+  if docker inspect "$host" >/dev/null 2>&1; then
+    ctr="$host"
+  elif [[ "$host" == node_* ]]; then
+    token="${host#node_}"
+    ctr="NODE_${token^^}"
+    docker inspect "$ctr" >/dev/null 2>&1 || ctr=""
+  fi
+
+  [[ -n "${ctr:-}" ]] || die "Node container not found for upstream '$host' (domain: $domain)"
+  docker inspect -f '{{.State.Running}}' "$ctr" 2>/dev/null | grep -qx true || die "Container not running: $ctr"
+
+  docker exec -it "$ctr" sh -lc '
+    cd /app 2>/dev/null || cd / || true
+    if command -v bash >/dev/null 2>&1; then exec bash --login; fi
+    exec sh
+  '
+}
+
+conf_node_container() {
+  local f="$1"
+
+  # Nginx node vhost: proxy_pass http://node_<token>:<port>;
+  local host token ctr
+
+  host="$(
+    grep -m1 -Eo 'proxy_pass[[:space:]]+http://[^;]+' "$f" 2>/dev/null |
+      awk '{print $2}' |
+      sed 's|^http://||' |
+      awk -F: '{print $1}'
+  )"
+
+  [[ -n "${host:-}" ]] || return 0
+  [[ "$host" == node_* ]] || return 0
+
+  token="${host#node_}"
+  ctr="NODE_${token^^}"
+
+  docker inspect "$ctr" >/dev/null 2>&1 || return 0
+  printf '%s' "$ctr"
 }
 
 ###############################################################################
@@ -1064,15 +1130,26 @@ cmd_cli() {
     exec sh
   '
 }
+
 cmd_core() {
   # Usage:
-  #   server core <domain>  -> open PHP for that domain (legacy)
-  #   server core           -> auto-detect project by current directory and open correct PHP container
+  #   server core <domain>  -> open correct container for that domain (PHP/Node)
+  #   server core           -> auto-detect project by current directory and open correct container
 
   local domain="${1:-}"
-  if [[ -n "${domain}" ]]; then
-    launch_php "${domain}"
-    return
+  if [[ -n "$domain" ]]; then
+    local nconf="$DIR/configuration/nginx/$domain.conf"
+    [[ -f "$nconf" ]] || die "No Nginx config for $domain"
+
+    # Node vhost?
+    if grep -Eq 'proxy_pass[[:space:]]+http://node_[A-Za-z0-9._-]+:[0-9]+' "$nconf"; then
+      launch_node "$domain"
+      return 0
+    fi
+
+    # Otherwise keep legacy PHP behavior
+    launch_php "$domain"
+    return 0
   fi
 
   core_auto
@@ -1115,32 +1192,58 @@ core_auto() {
   local php c_src app_path app_root rel host_proj l
   for f in "${confs[@]:-}"; do
     php="$(conf_php_container "$f")"
-    [[ -n "$php" ]] || continue
+    if [[ -n "$php" ]]; then
+      # Real host source for /app from the php container (beats env guesses)
+      c_src="$(docker_mount_source "$php" "/app")"
+      [[ -n "$c_src" ]] || c_src="$host_app_root"
 
-    # Real host source for /app from the php container (beats env guesses)
-    c_src="$(docker_mount_source "$php" "/app")"
-    [[ -n "$c_src" ]] || c_src="$host_app_root"
+      while IFS= read -r app_path; do
+        [[ -n "$app_path" ]] || continue
+        app_root="$(normalize_app_root "$app_path")"
 
-    while IFS= read -r app_path; do
-      [[ -n "$app_path" ]] || continue
+        rel="${app_root#/app/}"
+        host_proj="${c_src%/}/${rel}"
 
-      app_root="$(normalize_app_root "$app_path")"
-      [[ "$app_root" == /app/* ]] || continue
+        # Candidate is meaningful only if PWD is inside it
+        [[ "$pwd" == "$host_proj"* ]] || continue
 
-      rel="${app_root#/app/}"
-      [[ -n "$rel" ]] || continue
-
-      host_proj="${c_src%/}/$rel"
-
-      if [[ "$pwd" == "$host_proj"* ]]; then
         l="${#host_proj}"
         if ((l > best_len)); then
-          best_len="$l"
+          best_len=$l
+          best_container="$php"
+          best_host_root="$host_proj"
+        fi
+      done < <(conf_app_paths "$f")
+
+      # fallback: if no /app paths were detected in conf
+      if [[ -z "$best_container" ]]; then
+        [[ "$pwd" == "$c_src"* ]] || continue
+        l="${#c_src}"
+        if ((l > best_len)); then
+          best_len=$l
           best_container="$php"
           best_host_root="$c_src"
         fi
       fi
-    done < <(conf_app_paths "$f")
+
+      continue
+    fi
+
+    local node ctr_src
+    node="$(conf_node_container "$f")"
+    [[ -n "$node" ]] || continue
+
+    ctr_src="$(docker_mount_source "$node" "/app")"
+    [[ -n "$ctr_src" ]] || ctr_src="$host_app_root"
+
+    [[ "$pwd" == "$ctr_src"* ]] || continue
+
+    l="${#ctr_src}"
+    if ((l > best_len)); then
+      best_len=$l
+      best_container="$node"
+      best_host_root="$ctr_src"
+    fi
   done
 
   # Fallback: if PWD is under /app mount of a running PHP_* container, use it
