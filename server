@@ -2053,7 +2053,7 @@ cmd_vpn-fix() {
   while IFS= read -r ifc; do vpn_ifs+=("$ifc"); done < <(
     ip -br link 2>/dev/null |
       awk '$2 ~ /UP/ {print $1}' |
-      grep -E '^(tun|tap|wg|ppp|cscotun|utun)[0-9]*$' |
+      grep -E '^(tun|tap|wg|ppp|cscotun|utun|tailscale|zt|nordlynx|proton|vpn)[0-9]*$' |
       LC_ALL=C sort -u || true
   )
 
@@ -2074,12 +2074,6 @@ cmd_vpn-fix() {
     fi
   fi
 
-  # ---------------------------
-  # Cisco-safe strategy:
-  # - Scope NAT + FORWARD to only subnets actually routed via the VPN interface.
-  # - Append rules (don't insert at top), less likely to trip/override VPN client chains.
-  # - Tag rules so rollback is possible.
-  # ---------------------------
   local TAG="lds:vpn-fix"
 
   _ipt_append_if_missing() {
